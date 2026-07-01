@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Mon Prompteur</title>
+<style>
+  /* ---- Police adaptée dyslexie (chargée si internet dispo, sinon repli) ---- */
+  @font-face {
+    font-family: 'OpenDyslexic';
+    src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/open-dyslexic-regular.woff') format('woff');
+    font-display: swap;
+  }
+
+  :root {
+    --taille-texte: 42px;
+    --interligne: 1.7;
+    --espace-lettres: 0.5px;
+    --couleur-texte: #fff59d;      /* jaune doux, bon contraste */
+    --opacite-bande: 0.55;
+    --hauteur-bande: 45;           /* % de l'écran occupé par le texte */
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    background: #000; color: #fff; overflow: hidden;
+    font-family: system-ui, -apple-system, sans-serif;
+    user-select: none; -webkit-user-select: none;
+  }
+
+  /* ---------- CAMÉRA ---------- */
+  #cam {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; background: #111;
+    transform: scaleX(-1);   /* miroir : plus naturel en selfie */
+  }
+  #cam.sans-miroir { transform: none; }
+
+  /* ---------- BANDE DE TEXTE (par-dessus la caméra) ---------- */
+  #zoneTexte {
+    position: fixed; left: 0; right: 0; top: 0;
+    height: calc(var(--hauteur-bande) * 1vh);
+    overflow: hidden;
+    background: rgba(0,0,0,var(--opacite-bande));
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 82%, transparent 100%);
+            mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 82%, transparent 100%);
+  }
+  #zoneTexte.bas { top: auto; bottom: 0; }
+  #zoneTexte.centre { top: 50%; transform: translateY(-50%); height: 60vh; }
+
+  #texteDefilant {
+    position: absolute; left: 0; right: 0; top: 100%;
+    padding: 0 6vw;
+    font-size: var(--taille-texte);
+    line-height: var(--interligne);
+    letter-spacing: var(--espace-lettres);
+    color: var(--couleur-texte);
+    text-shadow: 0 2px 6px rgba(0,0,0,.9);
+    white-space: pre-wrap; word-wrap: break-word;
+    font-weight: 700;
+    will-change: transform;
+  }
+  #texteDefilant.dys { font-family: 'OpenDyslexic', 'Comic Sans MS', Verdana, sans-serif; }
+
+  /* Repère de lecture (ligne où fixer le regard) */
+  #repere {
+    position: fixed; left: 0; right: 0; top: 22%;
+    height: 0; border-top: 2px dashed rgba(255,255,255,.35);
+    pointer-events: none; z-index: 5;
+  }
+  #repere::before, #repere::after {
+    content: '▶'; position: absolute; top: -11px; color: rgba(255,80,80,.8); font-size: 18px;
+  }
+  #repere::before { left: 6px; }
+  #repere::after { right: 6px; content: '◀'; }
+  #repere.cache { display: none; }
+
+  /* ---------- BARRE DE CONTRÔLE ---------- */
+  #barre {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    display: flex; gap: 6px; padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    justify-content: center; align-items: center; flex-wrap: wrap;
+    background: linear-gradient(to top, rgba(0,0,0,.85), rgba(0,0,0,0));
+  }
+  .btn {
+    background: rgba(255,255,255,.14); color: #fff; border: 1px solid rgba(255,255,255,.25);
+    border-radius: 14px; padding: 12px 14px; font-size: 15px; font-weight: 700;
+    display: flex; align-items: center; gap: 6px; cursor: pointer; min-height: 50px;
+    backdrop-filter: blur(6px);
+  }
+  .btn:active { background: rgba(255,255,255,.3); }
+  .btn.rec { background: #c0392b; border-color: #e74c3c; }
+  .btn.rec.actif { animation: clignote 1s infinite; }
+  @keyframes clignote { 50% { opacity: .45; } }
+  .btn .ic { font-size: 20px; line-height: 1; }
+  .lbl { font-size: 13px; }
+
+  /* ---------- PANNEAU RÉGLAGES ---------- */
+  #reglages {
+    position: fixed; inset: 0; z-index: 40; background: rgba(10,10,14,.96);
+    padding: 20px; overflow-y: auto; display: none;
+  }
+  #reglages.ouvert { display: block; }
+  #reglages h2 { margin: 0 0 4px; font-size: 22px; }
+  #reglages p.sous { margin: 0 0 18px; color: #9aa; font-size: 14px; }
+  .grp { margin-bottom: 22px; }
+  .grp > label { display: block; font-weight: 700; margin-bottom: 8px; font-size: 16px; }
+  .grp .val { color: #7fd; font-weight: 400; }
+  input[type=range] { width: 100%; height: 40px; }
+  textarea {
+    width: 100%; min-height: 32vh; border-radius: 12px; padding: 14px;
+    font-size: 18px; line-height: 1.6; border: 1px solid #345; background: #12161c; color: #eaf;
+    resize: vertical;
+  }
+  .couleurs, .polices { display: flex; gap: 10px; flex-wrap: wrap; }
+  .pastille { width: 44px; height: 44px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; }
+  .pastille.sel { border-color: #fff; }
+  .chip { padding: 10px 14px; border-radius: 12px; background: #1c2530; border: 2px solid transparent; cursor: pointer; font-size: 16px; }
+  .chip.sel { border-color: #4fd; }
+  .fermer { position: sticky; top: 0; float: right; }
+  #aide { color: #89a; font-size: 13px; line-height: 1.6; background: #12161c; padding: 12px; border-radius: 10px; }
+
+  /* écran d'accueil */
+  #accueil { position: fixed; inset: 0; z-index: 50; background: #0b0e13; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+  #accueil h1 { font-size: 28px; margin: 0 0 6px; }
+  #accueil p { color: #9ab; margin: 0 0 26px; max-width: 520px; line-height: 1.6; }
+  .gros { font-size: 19px; padding: 18px 26px; border-radius: 18px; background: #2d7; color: #041; font-weight: 800; }
+</style>
+</head>
+<body>
+
+  <!-- Caméra -->
+  <video id="cam" autoplay playsinline muted></video>
+
+  <!-- Repère de lecture -->
+  <div id="repere"></div>
+
+  <!-- Texte défilant -->
+  <div id="zoneTexte">
+    <div id="texteDefilant" class="dys"></div>
+  </div>
+
+  <!-- Barre de contrôle -->
+  <div id="barre">
+    <div class="btn" id="btnPlay"><span class="ic">▶️</span><span class="lbl">Lire</span></div>
+    <div class="btn" id="btnMoins"><span class="ic">🐢</span></div>
+    <div class="btn" id="btnPlus"><span class="ic">🐇</span></div>
+    <div class="btn rec" id="btnRec"><span class="ic">⏺</span><span class="lbl">REC</span></div>
+    <div class="btn" id="btnCam"><span class="ic">🔄</span></div>
+    <div class="btn" id="btnReglages"><span class="ic">⚙️</span></div>
+  </div>
+
+  <!-- Panneau réglages -->
+  <div id="reglages">
+    <div class="btn fermer" id="btnFermer">✔️ Fermer</div>
+    <h2>Réglages</h2>
+    <p class="sous">Adapte tout à ton confort de lecture.</p>
+
+    <div class="grp">
+      <label>📝 Ton texte (colle ton script ici)</label>
+      <textarea id="champTexte" placeholder="Colle ou écris ton texte ici...&#10;&#10;Chaque ligne défilera de bas en haut."></textarea>
+    </div>
+
+    <div class="grp">
+      <label>Taille du texte : <span class="val" id="vTaille"></span></label>
+      <input type="range" id="rTaille" min="24" max="90" step="2">
+    </div>
+
+    <div class="grp">
+      <label>Vitesse de défilement : <span class="val" id="vVitesse"></span></label>
+      <input type="range" id="rVitesse" min="10" max="180" step="5">
+    </div>
+
+    <div class="grp">
+      <label>Espacement des lignes : <span class="val" id="vLigne"></span></label>
+      <input type="range" id="rLigne" min="12" max="26" step="1">
+    </div>
+
+    <div class="grp">
+      <label>Espacement des lettres : <span class="val" id="vLettre"></span></label>
+      <input type="range" id="rLettre" min="0" max="30" step="1">
+    </div>
+
+    <div class="grp">
+      <label>Hauteur de la zone de texte : <span class="val" id="vBande"></span></label>
+      <input type="range" id="rBande" min="25" max="70" step="5">
+    </div>
+
+    <div class="grp">
+      <label>Assombrissement du fond du texte : <span class="val" id="vOpacite"></span></label>
+      <input type="range" id="rOpacite" min="0" max="90" step="5">
+    </div>
+
+    <div class="grp">
+      <label>Police</label>
+      <div class="polices">
+        <div class="chip sel" data-police="dys">OpenDyslexic</div>
+        <div class="chip" data-police="normal">Standard</div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <label>Couleur du texte</label>
+      <div class="couleurs" id="couleurs">
+        <div class="pastille sel" style="background:#fff59d" data-c="#fff59d"></div>
+        <div class="pastille" style="background:#ffffff" data-c="#ffffff"></div>
+        <div class="pastille" style="background:#aef2c1" data-c="#aef2c1"></div>
+        <div class="pastille" style="background:#ffd6a5" data-c="#ffd6a5"></div>
+        <div class="pastille" style="background:#a5d8ff" data-c="#a5d8ff"></div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <label>Position du texte</label>
+      <div class="polices">
+        <div class="chip sel" data-pos="haut">En haut (près de l'objectif)</div>
+        <div class="chip" data-pos="centre">Au centre</div>
+        <div class="chip" data-pos="bas">En bas</div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <label>Options</label>
+      <div class="polices">
+        <div class="chip sel" id="chipRepere">Repère de lecture ✓</div>
+        <div class="chip sel" id="chipMiroir">Image miroir ✓</div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <label>Vidéos enregistrées</label>
+      <div id="listeVideos" style="color:#9ab;font-size:14px;">Aucune vidéo pour l'instant. Appuie sur REC pendant la lecture.</div>
+    </div>
+
+    <div id="aide">
+      <b>Astuce placement :</b> pose le téléphone en mode portrait, à hauteur des yeux. Regarde vers l'objectif (en haut), pas vers le bas de l'écran.<br><br>
+      <b>Commandes rapides :</b> touche l'écran (zone caméra) pour <b>Lire / Pause</b>. Glisse le doigt vers le haut/bas pour avancer/reculer le texte à la main.
+    </div>
+  </div>
+
+  <!-- Accueil -->
+  <div id="accueil">
+    <h1>🎬 Mon Prompteur</h1>
+    <p>Ton texte défile pendant que la caméra te filme. Pour commencer, autorise l'accès à la caméra et au micro.</p>
+    <div class="gros btn" id="btnDemarrer">Autoriser la caméra & démarrer</div>
+    <p style="margin-top:18px;font-size:13px;">Rien n'est envoyé sur internet. Tout reste sur ton téléphone.</p>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+  const $ = s => document.querySelector(s);
+
+  // ---- Éléments ----
+  const cam = $('#cam'), zone = $('#zoneTexte'), texte = $('#texteDefilant'), repere = $('#repere');
+  const root = document.documentElement.style;
+
+  // ---- État ----
+  let flux = null;              // MediaStream
+  let facing = 'user';          // caméra avant par défaut
+  let pos = 0;                  // position verticale du texte (px)
+  let enLecture = false;
+  let vitesse = 55;             // px/seconde
+  let dernierT = 0;
+  let raf = null;
+  let miroir = true, repereOn = true;
+  let mediaRecorder = null, morceaux = [], enReg = false;
+
+  // ---- Sauvegarde des réglages ----
+  const CFG = 'prompteur_cfg_v1';
+  const defauts = { texte:"", taille:42, vitesse:55, ligne:17, lettre:5, bande:45, opacite:55, police:'dys', couleur:'#fff59d', position:'haut', repere:true, miroir:true };
+  let cfg = Object.assign({}, defauts);
+  try { const s = localStorage.getItem(CFG); if(s) cfg = Object.assign(cfg, JSON.parse(s)); } catch(e){}
+  function sauver(){ try { localStorage.setItem(CFG, JSON.stringify(cfg)); } catch(e){} }
+
+  // ---- Application des réglages à l'écran ----
+  function appliquer(){
+    root.setProperty('--taille-texte', cfg.taille + 'px');
+    root.setProperty('--interligne', (cfg.ligne/10).toFixed(1));
+    root.setProperty('--espace-lettres', (cfg.lettre/10).toFixed(1) + 'px');
+    root.setProperty('--hauteur-bande', cfg.bande);
+    root.setProperty('--opacite-bande', (cfg.opacite/100).toFixed(2));
+    root.setProperty('--couleur-texte', cfg.couleur);
+    vitesse = cfg.vitesse;
+    texte.className = cfg.police === 'dys' ? 'dys' : '';
+    texte.textContent = cfg.texte || "Colle ton texte dans les réglages (⚙️) puis appuie sur Lire.";
+    zone.className = ''; if(cfg.position==='bas') zone.classList.add('bas'); if(cfg.position==='centre') zone.classList.add('centre');
+    miroir = cfg.miroir; cam.classList.toggle('sans-miroir', !miroir);
+    repereOn = cfg.repere; repere.classList.toggle('cache', !repereOn);
+    // maj des curseurs
+    $('#champTexte').value = cfg.texte;
+    maj('#rTaille','#vTaille',cfg.taille,'px');
+    maj('#rVitesse','#vVitesse',cfg.vitesse,'');
+    maj('#rLigne','#vLigne',cfg.ligne,'');
+    maj('#rLettre','#vLettre',cfg.lettre,'');
+    maj('#rBande','#vBande',cfg.bande,'%');
+    maj('#rOpacite','#vOpacite',cfg.opacite,'%');
+    selChip('[data-police]','police'); selChip('[data-pos]','position');
+    document.querySelectorAll('#couleurs .pastille').forEach(p=>p.classList.toggle('sel',p.dataset.c===cfg.couleur));
+    $('#chipRepere').classList.toggle('sel',cfg.repere); $('#chipRepere').textContent = 'Repère de lecture ' + (cfg.repere?'✓':'✗');
+    $('#chipMiroir').classList.toggle('sel',cfg.miroir); $('#chipMiroir').textContent = 'Image miroir ' + (cfg.miroir?'✓':'✗');
+  }
+  function maj(rid,vid,v,u){ $(rid).value=v; $(vid).textContent=v+u; }
+  function selChip(sel,clef){ document.querySelectorAll(sel).forEach(c=>c.classList.toggle('sel', c.dataset[Object.keys(c.dataset)[0]]===cfg[clef])); }
+
+  // ---- Boucle de défilement ----
+  function boucle(t){
+    if(!dernierT) dernierT = t;
+    const dt = (t - dernierT)/1000; dernierT = t;
+    if(enLecture){
+      pos -= vitesse * dt;
+      const hauteur = texte.offsetHeight;
+      const finVisible = zone.classList.contains('centre') ? window.innerHeight*0.6 : (cfg.bande/100*window.innerHeight);
+      if(pos < -hauteur){ pos = finVisible; } // recommence en boucle
+      appliquerPos();
+    }
+    raf = requestAnimationFrame(boucle);
+  }
+  function appliquerPos(){ texte.style.transform = 'translateY('+pos+'px)'; }
+
+  function lire(){ enLecture = true; dernierT = 0; $('#btnPlay').innerHTML = '<span class="ic">⏸️</span><span class="lbl">Pause</span>'; }
+  function pause(){ enLecture = false; $('#btnPlay').innerHTML = '<span class="ic">▶️</span><span class="lbl">Lire</span>'; }
+  function basculeLecture(){ enLecture ? pause() : lire(); }
+  function recommencer(){ pos = (cfg.bande/100*window.innerHeight); appliquerPos(); }
+
+  // ---- Caméra ----
+  async function demarrerCam(){
+    if(flux){ flux.getTracks().forEach(t=>t.stop()); }
+    try{
+      flux = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facing, width:{ideal:1920}, height:{ideal:1080} },
+        audio: true
+      });
+      cam.srcObject = flux;
+      cam.classList.toggle('sans-miroir', facing==='environment' || !miroir);
+    }catch(e){
+      alert("Impossible d'accéder à la caméra.\n\nVérifie que tu as autorisé la caméra dans le navigateur.\n\nDétail : " + e.message);
+    }
+  }
+  async function changerCam(){ facing = (facing==='user') ? 'environment' : 'user'; await demarrerCam(); reprendreReg(); }
+
+  // ---- Enregistrement ----
+  function typeSupporte(){
+    const l = ['video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+    for(const t of l){ if(window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t; }
+    return '';
+  }
+  function toggleRec(){
+    if(!flux){ alert("Démarre d'abord la caméra."); return; }
+    if(enReg){ mediaRecorder.stop(); return; }
+    const mime = typeSupporte();
+    if(!window.MediaRecorder){ alert("Ton navigateur ne permet pas l'enregistrement vidéo. Utilise Chrome (Android) à jour."); return; }
+    morceaux = [];
+    try{ mediaRecorder = new MediaRecorder(flux, mime?{mimeType:mime}:undefined); }
+    catch(e){ alert("Enregistrement impossible : "+e.message); return; }
+    mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) morceaux.push(e.data); };
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(morceaux, {type: mime || 'video/webm'});
+      const url = URL.createObjectURL(blob);
+      const ext = (mime.indexOf('mp4')>=0)?'mp4':'webm';
+      const nom = 'video_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.'+ext;
+      ajouterVideo(url, nom, blob.size);
+      // téléchargement auto
+      const a = document.createElement('a'); a.href=url; a.download=nom; a.click();
+      enReg = false; $('#btnRec').classList.remove('actif'); $('#btnRec').querySelector('.lbl').textContent='REC';
+    };
+    mediaRecorder.start();
+    enReg = true; $('#btnRec').classList.add('actif'); $('#btnRec').querySelector('.lbl').textContent='STOP';
+    if(!enLecture) lire();
+  }
+  function ajouterVideo(url,nom,taille){
+    const l = $('#listeVideos');
+    if(l.dataset.vide!=='non'){ l.innerHTML=''; l.dataset.vide='non'; }
+    const d = document.createElement('div'); d.style.marginBottom='10px';
+    d.innerHTML = '🎞️ <a href="'+url+'" download="'+nom+'" style="color:#7fd">'+nom+'</a> ('+(taille/1048576).toFixed(1)+' Mo)';
+    l.prepend(d);
+  }
+
+  // ---- Interactions réglages ----
+  function reprendreReg(){ /* garde l'état après changement caméra */ }
+  function ouvrirReg(){ $('#reglages').classList.add('ouvert'); if(enLecture) pause(); }
+  function fermerReg(){ $('#reglages').classList.remove('ouvert'); }
+
+  // curseurs
+  const liens = [['#rTaille','taille',v=>+v],['#rVitesse','vitesse',v=>+v],['#rLigne','ligne',v=>+v],
+                 ['#rLettre','lettre',v=>+v],['#rBande','bande',v=>+v],['#rOpacite','opacite',v=>+v]];
+  liens.forEach(([id,clef])=>{
+    $(id).addEventListener('input', e=>{ cfg[clef]=+e.target.value; appliquer(); sauver(); });
+  });
+  $('#champTexte').addEventListener('input', e=>{ cfg.texte=e.target.value; texte.textContent=e.target.value||''; sauver(); });
+  document.querySelectorAll('[data-police]').forEach(c=>c.addEventListener('click',()=>{ cfg.police=c.dataset.police; appliquer(); sauver(); }));
+  document.querySelectorAll('[data-pos]').forEach(c=>c.addEventListener('click',()=>{ cfg.position=c.dataset.pos; recommencer(); appliquer(); sauver(); }));
+  document.querySelectorAll('#couleurs .pastille').forEach(p=>p.addEventListener('click',()=>{ cfg.couleur=p.dataset.c; appliquer(); sauver(); }));
+  $('#chipRepere').addEventListener('click',()=>{ cfg.repere=!cfg.repere; appliquer(); sauver(); });
+  $('#chipMiroir').addEventListener('click',()=>{ cfg.miroir=!cfg.miroir; appliquer(); sauver(); });
+
+  // boutons barre
+  $('#btnPlay').addEventListener('click', basculeLecture);
+  $('#btnMoins').addEventListener('click',()=>{ cfg.vitesse=Math.max(10,cfg.vitesse-10); appliquer(); sauver(); });
+  $('#btnPlus').addEventListener('click',()=>{ cfg.vitesse=Math.min(180,cfg.vitesse+10); appliquer(); sauver(); });
+  $('#btnCam').addEventListener('click', changerCam);
+  $('#btnRec').addEventListener('click', toggleRec);
+  $('#btnReglages').addEventListener('click', ouvrirReg);
+  $('#btnFermer').addEventListener('click', fermerReg);
+
+  // toucher la zone caméra = lire/pause ; glisser = avancer le texte
+  let ty0=null;
+  zone.parentElement.addEventListener('touchstart', e=>{ if(e.target.closest('#barre,#reglages')) return; ty0 = e.touches[0].clientY; }, {passive:true});
+  document.addEventListener('touchmove', e=>{ if(ty0===null) return; const d=e.touches[0].clientY-ty0; pos += d; ty0=e.touches[0].clientY; appliquerPos(); }, {passive:true});
+  cam.addEventListener('click', ()=>{ if(!$('#reglages').classList.contains('ouvert')) basculeLecture(); });
+
+  // clavier (si utilisé sur PC)
+  document.addEventListener('keydown', e=>{
+    if($('#reglages').classList.contains('ouvert')) return;
+    if(e.code==='Space'){ e.preventDefault(); basculeLecture(); }
+    else if(e.code==='ArrowUp'){ pos-=30; appliquerPos(); }
+    else if(e.code==='ArrowDown'){ pos+=30; appliquerPos(); }
+    else if(e.key==='+'){ cfg.vitesse=Math.min(180,cfg.vitesse+10); appliquer(); }
+    else if(e.key==='-'){ cfg.vitesse=Math.max(10,cfg.vitesse-10); appliquer(); }
+    else if(e.key==='r'||e.key==='R'){ recommencer(); }
+  });
+
+  // empêche la mise en veille pendant l'usage (si supporté)
+  let wakeLock=null;
+  async function garderEveille(){ try{ if('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); }catch(e){} }
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') garderEveille(); });
+
+  // ---- Démarrage ----
+  $('#btnDemarrer').addEventListener('click', async ()=>{
+    $('#accueil').style.display='none';
+    await demarrerCam();
+    await garderEveille();
+    recommencer();
+  });
+
+  appliquer();
+  recommencer();
+  raf = requestAnimationFrame(boucle);
+})();
+</script>
+</body>
+</html>
