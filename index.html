@@ -151,6 +151,7 @@
     <div class="btn" id="btnMoins"><span class="ic">🐢</span></div>
     <div class="btn" id="btnPlus"><span class="ic">🐇</span></div>
     <div class="btn rec" id="btnRec"><span class="ic">⏺</span><span class="lbl">REC</span></div>
+    <div class="btn" id="btnPauseRec" style="display:none;"><span class="ic">⏸️</span><span class="lbl">Pause vidéo</span></div>
     <div class="btn" id="btnCam"><span class="ic">🔄</span></div>
     <div class="btn" id="btnReglages"><span class="ic">⚙️</span></div>
   </div>
@@ -249,6 +250,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 5</p>
   </div>
 
   <div id="accueil">
@@ -272,7 +274,7 @@
   let pos = 0, enLecture = false, vitesse = 55, dernierT = 0;
   let miroir = true, repereOn = true;
   let mediaRecorder = null, morceaux = [], enReg = false, recStream = null;
-  let recTimer = null, recT0 = 0;
+  let recTimer = null, recT0 = 0, recAccum = 0, recRunning = false;
   let modeFond = 'aucun', studioType = 'bleu';
   let selfie = null, mpPromise = null, busy = false, camPrete = false;
 
@@ -452,7 +454,8 @@
     return '';
   }
   function fmtChrono(s){ const m=Math.floor(s/60), r=Math.floor(s%60); return m+':'+(r<10?'0':'')+r; }
-  function majChrono(){ if(!enReg) return; const s=(Date.now()-recT0)/1000; $('#btnRec').querySelector('.lbl').textContent = 'STOP '+fmtChrono(s); }
+  function tempsEcoule(){ return recAccum + (recRunning ? (Date.now()-recT0)/1000 : 0); }
+  function majChrono(){ if(!enReg) return; $('#btnRec').querySelector('.lbl').textContent = 'STOP '+fmtChrono(tempsEcoule()); }
   // Choisit la source d'enregistrement : caméra brute si pas d'effet (durée fiable),
   // canvas seulement si un fond studio/flou est actif (pour l'inclure dans la vidéo).
   function sourceEnregistrement(){
@@ -468,14 +471,15 @@
   }
   function toggleRec(){
     if(!flux){ alert("Démarre d'abord la caméra."); return; }
-    if(enReg){ mediaRecorder.stop(); return; }
+    if(enReg){ try{ if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); }catch(e){} return; }
     if(!window.MediaRecorder){ alert("Ton navigateur ne permet pas l'enregistrement. Utilise Safari/Chrome à jour."); return; }
     const mime = typeSupporte(); morceaux = [];
     try{ mediaRecorder = new MediaRecorder(sourceEnregistrement(), mime?{mimeType:mime}:undefined); }
     catch(e){ alert("Enregistrement impossible : "+e.message); return; }
     mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) morceaux.push(e.data); };
     mediaRecorder.onstop = () => {
-      clearInterval(recTimer); recTimer = null;
+      clearInterval(recTimer); recTimer = null; recRunning = false;
+      $('#btnPauseRec').style.display = 'none';
       const type = mime || 'video/webm';
       const blob = new Blob(morceaux, {type});
       const url = URL.createObjectURL(blob);
@@ -486,9 +490,29 @@
       enReg = false; $('#btnRec').classList.remove('actif'); $('#btnRec').querySelector('.lbl').textContent='REC';
     };
     mediaRecorder.start(1000); // envoie les données chaque seconde = enregistrement complet et robuste
-    enReg = true; recT0 = Date.now(); $('#btnRec').classList.add('actif');
+    enReg = true; recAccum = 0; recT0 = Date.now(); recRunning = true;
+    $('#btnRec').classList.add('actif');
+    $('#btnPauseRec').style.display = '';
+    $('#btnPauseRec').innerHTML = '<span class="ic">⏸️</span><span class="lbl">Pause vidéo</span>';
     recTimer = setInterval(majChrono, 250); majChrono();
     if(!enLecture) lire();
+  }
+  // Pause / reprise de l'enregistrement (la vidéo continue dans le même fichier)
+  function togglePauseRec(){
+    if(!enReg || !mediaRecorder) return;
+    if(mediaRecorder.state === 'recording'){
+      try{ mediaRecorder.pause(); }catch(e){}
+      recAccum = tempsEcoule(); recRunning = false;
+      $('#btnPauseRec').innerHTML = '<span class="ic">⏺</span><span class="lbl">Reprendre</span>';
+      if(enLecture) pause();
+      toast('Vidéo en pause ⏸️ — appuie sur Reprendre pour continuer', 2200);
+    } else if(mediaRecorder.state === 'paused'){
+      try{ mediaRecorder.resume(); }catch(e){}
+      recT0 = Date.now(); recRunning = true;
+      $('#btnPauseRec').innerHTML = '<span class="ic">⏸️</span><span class="lbl">Pause vidéo</span>';
+      lire();
+      toast('On reprend ▶️', 1200);
+    }
   }
   function ajouterVideo(url,nom,taille){
     const l = $('#listeVideos');
@@ -543,6 +567,7 @@
   $('#btnPlus').addEventListener('click',()=>{ cfg.vitesse=Math.min(180,cfg.vitesse+10); appliquer(); sauver(); toast('Vitesse : '+cfg.vitesse,900); });
   $('#btnCam').addEventListener('click', changerCam);
   $('#btnRec').addEventListener('click', toggleRec);
+  $('#btnPauseRec').addEventListener('click', togglePauseRec);
   $('#btnReglages').addEventListener('click', ouvrirReg);
   $('#btnFermer').addEventListener('click', fermerReg);
   $('#btnSaveGalerie').addEventListener('click', enregistrerGalerie);
