@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Mon Prompteur</title>
 <style>
-  /* ---- Police adaptée dyslexie (chargée si internet dispo, sinon repli) ---- */
   @font-face {
     font-family: 'OpenDyslexic';
     src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/open-dyslexic-regular.woff') format('woff');
@@ -16,9 +15,9 @@
     --taille-texte: 42px;
     --interligne: 1.7;
     --espace-lettres: 0.5px;
-    --couleur-texte: #fff59d;      /* jaune doux, bon contraste */
+    --couleur-texte: #fff59d;
     --opacite-bande: 0.55;
-    --hauteur-bande: 45;           /* % de l'écran occupé par le texte */
+    --hauteur-bande: 45;
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -29,17 +28,21 @@
     user-select: none; -webkit-user-select: none;
   }
 
-  /* ---------- CAMÉRA ---------- */
+  /* Vidéo source (cachée) : sert de source à la caméra et à l'IA */
   #cam {
-    position: fixed; inset: 0; width: 100%; height: 100%;
-    object-fit: cover; background: #111;
-    transform: scaleX(-1);   /* miroir : plus naturel en selfie */
+    position: fixed; top: 0; left: 0; width: 2px; height: 2px;
+    opacity: 0.01; pointer-events: none; z-index: -1;
   }
-  #cam.sans-miroir { transform: none; }
 
-  /* ---------- BANDE DE TEXTE (par-dessus la caméra) ---------- */
+  /* Canvas de sortie : ce que l'on voit et ce qui est enregistré */
+  #sortie {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; background: #111; z-index: 0;
+  }
+
+  /* ---------- BANDE DE TEXTE ---------- */
   #zoneTexte {
-    position: fixed; left: 0; right: 0; top: 0;
+    position: fixed; left: 0; right: 0; top: 0; z-index: 3;
     height: calc(var(--hauteur-bande) * 1vh);
     overflow: hidden;
     background: rgba(0,0,0,var(--opacite-bande));
@@ -58,20 +61,15 @@
     color: var(--couleur-texte);
     text-shadow: 0 2px 6px rgba(0,0,0,.9);
     white-space: pre-wrap; word-wrap: break-word;
-    font-weight: 700;
-    will-change: transform;
+    font-weight: 700; will-change: transform;
   }
   #texteDefilant.dys { font-family: 'OpenDyslexic', 'Comic Sans MS', Verdana, sans-serif; }
 
-  /* Repère de lecture (ligne où fixer le regard) */
   #repere {
-    position: fixed; left: 0; right: 0; top: 22%;
-    height: 0; border-top: 2px dashed rgba(255,255,255,.35);
-    pointer-events: none; z-index: 5;
+    position: fixed; left: 0; right: 0; top: 22%; z-index: 5;
+    height: 0; border-top: 2px dashed rgba(255,255,255,.35); pointer-events: none;
   }
-  #repere::before, #repere::after {
-    content: '▶'; position: absolute; top: -11px; color: rgba(255,80,80,.8); font-size: 18px;
-  }
+  #repere::before, #repere::after { content: '▶'; position: absolute; top: -11px; color: rgba(255,80,80,.8); font-size: 18px; }
   #repere::before { left: 6px; }
   #repere::after { right: 6px; content: '◀'; }
   #repere.cache { display: none; }
@@ -86,8 +84,7 @@
   .btn {
     background: rgba(255,255,255,.14); color: #fff; border: 1px solid rgba(255,255,255,.25);
     border-radius: 14px; padding: 12px 14px; font-size: 15px; font-weight: 700;
-    display: flex; align-items: center; gap: 6px; cursor: pointer; min-height: 50px;
-    backdrop-filter: blur(6px);
+    display: flex; align-items: center; gap: 6px; cursor: pointer; min-height: 50px; backdrop-filter: blur(6px);
   }
   .btn:active { background: rgba(255,255,255,.3); }
   .btn.rec { background: #c0392b; border-color: #e74c3c; }
@@ -97,10 +94,7 @@
   .lbl { font-size: 13px; }
 
   /* ---------- PANNEAU RÉGLAGES ---------- */
-  #reglages {
-    position: fixed; inset: 0; z-index: 40; background: rgba(10,10,14,.96);
-    padding: 20px; overflow-y: auto; display: none;
-  }
+  #reglages { position: fixed; inset: 0; z-index: 40; background: rgba(10,10,14,.96); padding: 20px; overflow-y: auto; display: none; }
   #reglages.ouvert { display: block; }
   #reglages h2 { margin: 0 0 4px; font-size: 22px; }
   #reglages p.sous { margin: 0 0 18px; color: #9aa; font-size: 14px; }
@@ -108,11 +102,7 @@
   .grp > label { display: block; font-weight: 700; margin-bottom: 8px; font-size: 16px; }
   .grp .val { color: #7fd; font-weight: 400; }
   input[type=range] { width: 100%; height: 40px; }
-  textarea {
-    width: 100%; min-height: 32vh; border-radius: 12px; padding: 14px;
-    font-size: 18px; line-height: 1.6; border: 1px solid #345; background: #12161c; color: #eaf;
-    resize: vertical;
-  }
+  textarea { width: 100%; min-height: 32vh; border-radius: 12px; padding: 14px; font-size: 18px; line-height: 1.6; border: 1px solid #345; background: #12161c; color: #eaf; resize: vertical; }
   .couleurs, .polices { display: flex; gap: 10px; flex-wrap: wrap; }
   .pastille { width: 44px; height: 44px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; }
   .pastille.sel { border-color: #fff; }
@@ -121,27 +111,31 @@
   .fermer { position: sticky; top: 0; float: right; }
   #aide { color: #89a; font-size: 13px; line-height: 1.6; background: #12161c; padding: 12px; border-radius: 10px; }
 
-  /* écran d'accueil */
+  .apercuFond { width: 60px; height: 44px; border-radius: 10px; border: 2px solid transparent; cursor: pointer; display:inline-block; }
+  .apercuFond.sel { border-color: #4fd; }
+
   #accueil { position: fixed; inset: 0; z-index: 50; background: #0b0e13; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
   #accueil h1 { font-size: 28px; margin: 0 0 6px; }
   #accueil p { color: #9ab; margin: 0 0 26px; max-width: 520px; line-height: 1.6; }
   .gros { font-size: 19px; padding: 18px 26px; border-radius: 18px; background: #2d7; color: #041; font-weight: 800; }
+
+  #toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); z-index: 60;
+    background: rgba(0,0,0,.85); color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 14px;
+    display: none; max-width: 80vw; text-align: center; }
+  #toast.on { display: block; }
 </style>
 </head>
 <body>
 
-  <!-- Caméra -->
   <video id="cam" autoplay playsinline muted></video>
+  <canvas id="sortie"></canvas>
 
-  <!-- Repère de lecture -->
   <div id="repere"></div>
 
-  <!-- Texte défilant -->
   <div id="zoneTexte">
     <div id="texteDefilant" class="dys"></div>
   </div>
 
-  <!-- Barre de contrôle -->
   <div id="barre">
     <div class="btn" id="btnPlay"><span class="ic">▶️</span><span class="lbl">Lire</span></div>
     <div class="btn" id="btnMoins"><span class="ic">🐢</span></div>
@@ -151,46 +145,44 @@
     <div class="btn" id="btnReglages"><span class="ic">⚙️</span></div>
   </div>
 
-  <!-- Panneau réglages -->
+  <div id="toast"></div>
+
   <div id="reglages">
     <div class="btn fermer" id="btnFermer">✔️ Fermer</div>
     <h2>Réglages</h2>
     <p class="sous">Adapte tout à ton confort de lecture.</p>
 
     <div class="grp">
+      <label>🎬 Fond / Décor studio</label>
+      <div class="polices" id="grpFond">
+        <div class="chip sel" data-fond="aucun">Aucun (normal)</div>
+        <div class="chip" data-fond="flou">Flou</div>
+        <div class="chip" data-fond="studio">Studio</div>
+      </div>
+      <div id="choixStudio" style="margin-top:12px; display:none;">
+        <label style="font-weight:400; font-size:14px; color:#9ab;">Choisis ton décor :</label>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;" id="grpStudio">
+          <span class="apercuFond sel" data-studio="bleu"   style="background:radial-gradient(circle at 50% 35%, #2a5db0, #0a1730);"></span>
+          <span class="apercuFond"     data-studio="violet" style="background:radial-gradient(circle at 50% 35%, #7a2bd6, #1a0a2e);"></span>
+          <span class="apercuFond"     data-studio="gris"   style="background:radial-gradient(circle at 50% 35%, #6a7078, #14181d);"></span>
+          <span class="apercuFond"     data-studio="chaud"  style="background:radial-gradient(circle at 50% 35%, #d98a3a, #2e160a);"></span>
+          <span class="apercuFond"     data-studio="vert"   style="background:radial-gradient(circle at 50% 35%, #2ba36a, #08201a);"></span>
+        </div>
+      </div>
+      <p style="font-size:12.5px; color:#789; margin:10px 0 0;">💡 Le fond studio/flou utilise plus de batterie et a besoin d'internet la 1ʳᵉ fois (chargement de l'IA).</p>
+    </div>
+
+    <div class="grp">
       <label>📝 Ton texte (colle ton script ici)</label>
       <textarea id="champTexte" placeholder="Colle ou écris ton texte ici...&#10;&#10;Chaque ligne défilera de bas en haut."></textarea>
     </div>
 
-    <div class="grp">
-      <label>Taille du texte : <span class="val" id="vTaille"></span></label>
-      <input type="range" id="rTaille" min="24" max="90" step="2">
-    </div>
-
-    <div class="grp">
-      <label>Vitesse de défilement : <span class="val" id="vVitesse"></span></label>
-      <input type="range" id="rVitesse" min="10" max="180" step="5">
-    </div>
-
-    <div class="grp">
-      <label>Espacement des lignes : <span class="val" id="vLigne"></span></label>
-      <input type="range" id="rLigne" min="12" max="26" step="1">
-    </div>
-
-    <div class="grp">
-      <label>Espacement des lettres : <span class="val" id="vLettre"></span></label>
-      <input type="range" id="rLettre" min="0" max="30" step="1">
-    </div>
-
-    <div class="grp">
-      <label>Hauteur de la zone de texte : <span class="val" id="vBande"></span></label>
-      <input type="range" id="rBande" min="25" max="70" step="5">
-    </div>
-
-    <div class="grp">
-      <label>Assombrissement du fond du texte : <span class="val" id="vOpacite"></span></label>
-      <input type="range" id="rOpacite" min="0" max="90" step="5">
-    </div>
+    <div class="grp"><label>Taille du texte : <span class="val" id="vTaille"></span></label><input type="range" id="rTaille" min="24" max="90" step="2"></div>
+    <div class="grp"><label>Vitesse de défilement : <span class="val" id="vVitesse"></span></label><input type="range" id="rVitesse" min="10" max="180" step="5"></div>
+    <div class="grp"><label>Espacement des lignes : <span class="val" id="vLigne"></span></label><input type="range" id="rLigne" min="12" max="26" step="1"></div>
+    <div class="grp"><label>Espacement des lettres : <span class="val" id="vLettre"></span></label><input type="range" id="rLettre" min="0" max="30" step="1"></div>
+    <div class="grp"><label>Hauteur de la zone de texte : <span class="val" id="vBande"></span></label><input type="range" id="rBande" min="25" max="70" step="5"></div>
+    <div class="grp"><label>Assombrissement du fond du texte : <span class="val" id="vOpacite"></span></label><input type="range" id="rOpacite" min="0" max="90" step="5"></div>
 
     <div class="grp">
       <label>Police</label>
@@ -230,16 +222,15 @@
 
     <div class="grp">
       <label>Vidéos enregistrées</label>
-      <div id="listeVideos" style="color:#9ab;font-size:14px;">Aucune vidéo pour l'instant. Appuie sur REC pendant la lecture.</div>
+      <div id="listeVideos" data-vide="oui" style="color:#9ab;font-size:14px;">Aucune vidéo pour l'instant. Appuie sur REC pendant la lecture.</div>
     </div>
 
     <div id="aide">
-      <b>Astuce placement :</b> pose le téléphone en mode portrait, à hauteur des yeux. Regarde vers l'objectif (en haut), pas vers le bas de l'écran.<br><br>
-      <b>Commandes rapides :</b> touche l'écran (zone caméra) pour <b>Lire / Pause</b>. Glisse le doigt vers le haut/bas pour avancer/reculer le texte à la main.
+      <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
+      <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
   </div>
 
-  <!-- Accueil -->
   <div id="accueil">
     <h1>🎬 Mon Prompteur</h1>
     <p>Ton texte défile pendant que la caméra te filme. Pour commencer, autorise l'accès à la caméra et au micro.</p>
@@ -252,29 +243,29 @@
   "use strict";
   const $ = s => document.querySelector(s);
 
-  // ---- Éléments ----
-  const cam = $('#cam'), zone = $('#zoneTexte'), texte = $('#texteDefilant'), repere = $('#repere');
+  const cam = $('#cam'), canvas = $('#sortie'), zone = $('#zoneTexte'), texte = $('#texteDefilant'), repere = $('#repere');
+  const ctx = canvas.getContext('2d');
+  const work = document.createElement('canvas'); const wctx = work.getContext('2d');
   const root = document.documentElement.style;
 
-  // ---- État ----
-  let flux = null;              // MediaStream
-  let facing = 'user';          // caméra avant par défaut
-  let pos = 0;                  // position verticale du texte (px)
-  let enLecture = false;
-  let vitesse = 55;             // px/seconde
-  let dernierT = 0;
-  let raf = null;
+  let flux = null, facing = 'user';
+  let pos = 0, enLecture = false, vitesse = 55, dernierT = 0;
   let miroir = true, repereOn = true;
-  let mediaRecorder = null, morceaux = [], enReg = false;
+  let mediaRecorder = null, morceaux = [], enReg = false, recStream = null;
+  let modeFond = 'aucun', studioType = 'bleu';
+  let selfie = null, mpPromise = null, busy = false, camPrete = false;
 
-  // ---- Sauvegarde des réglages ----
-  const CFG = 'prompteur_cfg_v1';
-  const defauts = { texte:"", taille:42, vitesse:55, ligne:17, lettre:5, bande:45, opacite:55, police:'dys', couleur:'#fff59d', position:'haut', repere:true, miroir:true };
+  // ---- Config sauvegardée ----
+  const CFG = 'prompteur_cfg_v2';
+  const defauts = { texte:"", taille:42, vitesse:55, ligne:17, lettre:5, bande:45, opacite:55, police:'dys', couleur:'#fff59d', position:'haut', repere:true, miroir:true, fond:'aucun', studio:'bleu' };
   let cfg = Object.assign({}, defauts);
   try { const s = localStorage.getItem(CFG); if(s) cfg = Object.assign(cfg, JSON.parse(s)); } catch(e){}
   function sauver(){ try { localStorage.setItem(CFG, JSON.stringify(cfg)); } catch(e){} }
 
-  // ---- Application des réglages à l'écran ----
+  function toast(msg, ms){ const t=$('#toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(t._h); if(ms) t._h=setTimeout(()=>t.classList.remove('on'), ms); }
+  function cacheToast(){ $('#toast').classList.remove('on'); }
+
+  // ---- Application des réglages ----
   function appliquer(){
     root.setProperty('--taille-texte', cfg.taille + 'px');
     root.setProperty('--interligne', (cfg.ligne/10).toFixed(1));
@@ -286,61 +277,163 @@
     texte.className = cfg.police === 'dys' ? 'dys' : '';
     texte.textContent = cfg.texte || "Colle ton texte dans les réglages (⚙️) puis appuie sur Lire.";
     zone.className = ''; if(cfg.position==='bas') zone.classList.add('bas'); if(cfg.position==='centre') zone.classList.add('centre');
-    miroir = cfg.miroir; cam.classList.toggle('sans-miroir', !miroir);
-    repereOn = cfg.repere; repere.classList.toggle('cache', !repereOn);
-    // maj des curseurs
+    miroir = cfg.miroir; repereOn = cfg.repere; repere.classList.toggle('cache', !repereOn);
+    studioType = cfg.studio;
     $('#champTexte').value = cfg.texte;
-    maj('#rTaille','#vTaille',cfg.taille,'px');
-    maj('#rVitesse','#vVitesse',cfg.vitesse,'');
-    maj('#rLigne','#vLigne',cfg.ligne,'');
-    maj('#rLettre','#vLettre',cfg.lettre,'');
-    maj('#rBande','#vBande',cfg.bande,'%');
-    maj('#rOpacite','#vOpacite',cfg.opacite,'%');
-    selChip('[data-police]','police'); selChip('[data-pos]','position');
+    maj('#rTaille','#vTaille',cfg.taille,'px'); maj('#rVitesse','#vVitesse',cfg.vitesse,'');
+    maj('#rLigne','#vLigne',cfg.ligne,''); maj('#rLettre','#vLettre',cfg.lettre,'');
+    maj('#rBande','#vBande',cfg.bande,'%'); maj('#rOpacite','#vOpacite',cfg.opacite,'%');
+    document.querySelectorAll('[data-police]').forEach(c=>c.classList.toggle('sel',c.dataset.police===cfg.police));
+    document.querySelectorAll('[data-pos]').forEach(c=>c.classList.toggle('sel',c.dataset.pos===cfg.position));
     document.querySelectorAll('#couleurs .pastille').forEach(p=>p.classList.toggle('sel',p.dataset.c===cfg.couleur));
+    document.querySelectorAll('[data-fond]').forEach(c=>c.classList.toggle('sel',c.dataset.fond===cfg.fond));
+    document.querySelectorAll('[data-studio]').forEach(c=>c.classList.toggle('sel',c.dataset.studio===cfg.studio));
+    $('#choixStudio').style.display = (cfg.fond==='studio') ? 'block' : 'none';
     $('#chipRepere').classList.toggle('sel',cfg.repere); $('#chipRepere').textContent = 'Repère de lecture ' + (cfg.repere?'✓':'✗');
     $('#chipMiroir').classList.toggle('sel',cfg.miroir); $('#chipMiroir').textContent = 'Image miroir ' + (cfg.miroir?'✓':'✗');
   }
   function maj(rid,vid,v,u){ $(rid).value=v; $(vid).textContent=v+u; }
-  function selChip(sel,clef){ document.querySelectorAll(sel).forEach(c=>c.classList.toggle('sel', c.dataset[Object.keys(c.dataset)[0]]===cfg[clef])); }
 
-  // ---- Boucle de défilement ----
-  function boucle(t){
+  // ---- Défilement du texte ----
+  function boucleTexte(t){
     if(!dernierT) dernierT = t;
     const dt = (t - dernierT)/1000; dernierT = t;
     if(enLecture){
       pos -= vitesse * dt;
       const hauteur = texte.offsetHeight;
       const finVisible = zone.classList.contains('centre') ? window.innerHeight*0.6 : (cfg.bande/100*window.innerHeight);
-      if(pos < -hauteur){ pos = finVisible; } // recommence en boucle
-      appliquerPos();
+      if(pos < -hauteur){ pos = finVisible; }
+      texte.style.transform = 'translateY('+pos+'px)';
     }
-    raf = requestAnimationFrame(boucle);
+    requestAnimationFrame(boucleTexte);
   }
   function appliquerPos(){ texte.style.transform = 'translateY('+pos+'px)'; }
-
   function lire(){ enLecture = true; dernierT = 0; $('#btnPlay').innerHTML = '<span class="ic">⏸️</span><span class="lbl">Pause</span>'; }
   function pause(){ enLecture = false; $('#btnPlay').innerHTML = '<span class="ic">▶️</span><span class="lbl">Lire</span>'; }
   function basculeLecture(){ enLecture ? pause() : lire(); }
   function recommencer(){ pos = (cfg.bande/100*window.innerHeight); appliquerPos(); }
+
+  // ---- Décor studio (dégradés dessinés) ----
+  const STUDIOS = {
+    bleu:   ['#3a6fd0','#0a1730'], violet: ['#8a3be6','#1a0a2e'],
+    gris:   ['#7a828c','#14181d'], chaud:  ['#e59a4a','#2e160a'], vert: ['#31b678','#08201a']
+  };
+  function dessineStudio(c, w, h, type){
+    const col = STUDIOS[type] || STUDIOS.bleu;
+    const g = c.createRadialGradient(w*0.5, h*0.32, Math.min(w,h)*0.05, w*0.5, h*0.42, Math.max(w,h)*0.85);
+    g.addColorStop(0, col[0]); g.addColorStop(1, col[1]);
+    c.fillStyle = g; c.fillRect(0,0,w,h);
+    const s = c.createRadialGradient(w*0.5, h*0.12, 0, w*0.5, h*0.12, Math.max(w,h)*0.4);
+    s.addColorStop(0, 'rgba(255,255,255,0.18)'); s.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = s; c.fillRect(0,0,w,h);
+  }
+
+  // ---- Rendu du canvas ----
+  function dimensionne(){
+    const w = cam.videoWidth || 720, h = cam.videoHeight || 1280;
+    if(canvas.width !== w || canvas.height !== h){ canvas.width = w; canvas.height = h; work.width = w; work.height = h; }
+  }
+  function blit(src){
+    const w = canvas.width, h = canvas.height;
+    ctx.save();
+    if(miroir && facing==='user'){ ctx.setTransform(-1,0,0,1,w,0); } else { ctx.setTransform(1,0,0,1,0,0); }
+    ctx.drawImage(src, 0, 0, w, h);
+    ctx.restore();
+  }
+  function dessineBrut(){ dimensionne(); blit(cam); }
+
+  function onResults(results){
+    dimensionne();
+    const w = work.width, h = work.height;
+    wctx.save();
+    wctx.clearRect(0,0,w,h);
+    wctx.drawImage(results.segmentationMask, 0, 0, w, h);
+    wctx.globalCompositeOperation = 'source-in';
+    wctx.drawImage(results.image, 0, 0, w, h);
+    wctx.globalCompositeOperation = 'destination-over';
+    if(modeFond === 'flou'){
+      wctx.filter = 'blur(16px)';
+      wctx.drawImage(results.image, 0, 0, w, h);
+      wctx.filter = 'none';
+    } else {
+      dessineStudio(wctx, w, h, studioType);
+    }
+    wctx.restore();
+    wctx.globalCompositeOperation = 'source-over';
+    blit(work);
+  }
+
+  async function boucleRendu(){
+    if(camPrete){
+      if(modeFond === 'aucun' || !selfie){ dessineBrut(); }
+      else if(!busy){ busy = true; try { await selfie.send({image: cam}); } catch(e){} busy = false; }
+    }
+    requestAnimationFrame(boucleRendu);
+  }
+
+  // ---- Chargement MediaPipe (à la demande) ----
+  function chargerMP(){
+    if(selfie) return Promise.resolve(selfie);
+    if(mpPromise) return mpPromise;
+    toast('Chargement du studio IA…');
+    mpPromise = new Promise((res, rej)=>{
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js';
+      s.crossOrigin = 'anonymous';
+      s.onload = ()=>{
+        try{
+          const seg = new SelfieSegmentation({ locateFile: f => 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/'+f });
+          seg.setOptions({ modelSelection: 1, selfieMode: false });
+          seg.onResults(onResults);
+          selfie = seg; cacheToast(); res(seg);
+        }catch(e){ rej(e); }
+      };
+      s.onerror = ()=> rej(new Error('réseau'));
+      document.head.appendChild(s);
+    });
+    return mpPromise;
+  }
+
+  async function changerFond(nouv){
+    cfg.fond = nouv; sauver(); appliquer();
+    if(nouv === 'aucun'){ modeFond = 'aucun'; cacheToast(); return; }
+    try{
+      await chargerMP();
+      modeFond = nouv;
+      toast(nouv==='flou' ? 'Flou activé ✅' : 'Studio activé ✅', 1800);
+    }catch(e){
+      modeFond = 'aucun'; cfg.fond='aucun'; sauver(); appliquer();
+      toast('Impossible de charger le studio IA (vérifie ta connexion internet).', 4000);
+    }
+  }
 
   // ---- Caméra ----
   async function demarrerCam(){
     if(flux){ flux.getTracks().forEach(t=>t.stop()); }
     try{
       flux = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facing, width:{ideal:1920}, height:{ideal:1080} },
+        video: { facingMode: facing, width:{ideal:1280}, height:{ideal:720} },
         audio: true
       });
       cam.srcObject = flux;
-      cam.classList.toggle('sans-miroir', facing==='environment' || !miroir);
+      await cam.play().catch(()=>{});
+      camPrete = true;
+      construireRecStream();
     }catch(e){
       alert("Impossible d'accéder à la caméra.\n\nVérifie que tu as autorisé la caméra dans le navigateur.\n\nDétail : " + e.message);
     }
   }
-  async function changerCam(){ facing = (facing==='user') ? 'environment' : 'user'; await demarrerCam(); reprendreReg(); }
+  async function changerCam(){ facing = (facing==='user') ? 'environment' : 'user'; camPrete=false; await demarrerCam(); }
 
-  // ---- Enregistrement ----
+  // ---- Enregistrement (on filme le CANVAS + le son) ----
+  function construireRecStream(){
+    try{
+      const cs = canvas.captureStream(30);
+      const a = flux.getAudioTracks()[0];
+      if(a) cs.addTrack(a);
+      recStream = cs;
+    }catch(e){ recStream = flux; }
+  }
   function typeSupporte(){
     const l = ['video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
     for(const t of l){ if(window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t; }
@@ -349,10 +442,9 @@
   function toggleRec(){
     if(!flux){ alert("Démarre d'abord la caméra."); return; }
     if(enReg){ mediaRecorder.stop(); return; }
-    const mime = typeSupporte();
-    if(!window.MediaRecorder){ alert("Ton navigateur ne permet pas l'enregistrement vidéo. Utilise Chrome (Android) à jour."); return; }
-    morceaux = [];
-    try{ mediaRecorder = new MediaRecorder(flux, mime?{mimeType:mime}:undefined); }
+    if(!window.MediaRecorder){ alert("Ton navigateur ne permet pas l'enregistrement. Utilise Safari/Chrome à jour."); return; }
+    const mime = typeSupporte(); morceaux = [];
+    try{ mediaRecorder = new MediaRecorder(recStream || flux, mime?{mimeType:mime}:undefined); }
     catch(e){ alert("Enregistrement impossible : "+e.message); return; }
     mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) morceaux.push(e.data); };
     mediaRecorder.onstop = () => {
@@ -361,7 +453,6 @@
       const ext = (mime.indexOf('mp4')>=0)?'mp4':'webm';
       const nom = 'video_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.'+ext;
       ajouterVideo(url, nom, blob.size);
-      // téléchargement auto
       const a = document.createElement('a'); a.href=url; a.download=nom; a.click();
       enReg = false; $('#btnRec').classList.remove('actif'); $('#btnRec').querySelector('.lbl').textContent='REC';
     };
@@ -377,40 +468,34 @@
     l.prepend(d);
   }
 
-  // ---- Interactions réglages ----
-  function reprendreReg(){ /* garde l'état après changement caméra */ }
+  // ---- Réglages : interactions ----
   function ouvrirReg(){ $('#reglages').classList.add('ouvert'); if(enLecture) pause(); }
   function fermerReg(){ $('#reglages').classList.remove('ouvert'); }
 
-  // curseurs
-  const liens = [['#rTaille','taille',v=>+v],['#rVitesse','vitesse',v=>+v],['#rLigne','ligne',v=>+v],
-                 ['#rLettre','lettre',v=>+v],['#rBande','bande',v=>+v],['#rOpacite','opacite',v=>+v]];
-  liens.forEach(([id,clef])=>{
-    $(id).addEventListener('input', e=>{ cfg[clef]=+e.target.value; appliquer(); sauver(); });
-  });
+  const liens = [['#rTaille','taille'],['#rVitesse','vitesse'],['#rLigne','ligne'],['#rLettre','lettre'],['#rBande','bande'],['#rOpacite','opacite']];
+  liens.forEach(([id,clef])=>{ $(id).addEventListener('input', e=>{ cfg[clef]=+e.target.value; appliquer(); sauver(); }); });
   $('#champTexte').addEventListener('input', e=>{ cfg.texte=e.target.value; texte.textContent=e.target.value||''; sauver(); });
   document.querySelectorAll('[data-police]').forEach(c=>c.addEventListener('click',()=>{ cfg.police=c.dataset.police; appliquer(); sauver(); }));
   document.querySelectorAll('[data-pos]').forEach(c=>c.addEventListener('click',()=>{ cfg.position=c.dataset.pos; recommencer(); appliquer(); sauver(); }));
   document.querySelectorAll('#couleurs .pastille').forEach(p=>p.addEventListener('click',()=>{ cfg.couleur=p.dataset.c; appliquer(); sauver(); }));
+  document.querySelectorAll('[data-fond]').forEach(c=>c.addEventListener('click',()=>{ changerFond(c.dataset.fond); }));
+  document.querySelectorAll('[data-studio]').forEach(c=>c.addEventListener('click',()=>{ cfg.studio=c.dataset.studio; studioType=c.dataset.studio; appliquer(); sauver(); }));
   $('#chipRepere').addEventListener('click',()=>{ cfg.repere=!cfg.repere; appliquer(); sauver(); });
   $('#chipMiroir').addEventListener('click',()=>{ cfg.miroir=!cfg.miroir; appliquer(); sauver(); });
 
-  // boutons barre
   $('#btnPlay').addEventListener('click', basculeLecture);
-  $('#btnMoins').addEventListener('click',()=>{ cfg.vitesse=Math.max(10,cfg.vitesse-10); appliquer(); sauver(); });
-  $('#btnPlus').addEventListener('click',()=>{ cfg.vitesse=Math.min(180,cfg.vitesse+10); appliquer(); sauver(); });
+  $('#btnMoins').addEventListener('click',()=>{ cfg.vitesse=Math.max(10,cfg.vitesse-10); appliquer(); sauver(); toast('Vitesse : '+cfg.vitesse,900); });
+  $('#btnPlus').addEventListener('click',()=>{ cfg.vitesse=Math.min(180,cfg.vitesse+10); appliquer(); sauver(); toast('Vitesse : '+cfg.vitesse,900); });
   $('#btnCam').addEventListener('click', changerCam);
   $('#btnRec').addEventListener('click', toggleRec);
   $('#btnReglages').addEventListener('click', ouvrirReg);
   $('#btnFermer').addEventListener('click', fermerReg);
 
-  // toucher la zone caméra = lire/pause ; glisser = avancer le texte
   let ty0=null;
-  zone.parentElement.addEventListener('touchstart', e=>{ if(e.target.closest('#barre,#reglages')) return; ty0 = e.touches[0].clientY; }, {passive:true});
+  document.addEventListener('touchstart', e=>{ if(e.target.closest('#barre,#reglages,#accueil')) return; ty0 = e.touches[0].clientY; }, {passive:true});
   document.addEventListener('touchmove', e=>{ if(ty0===null) return; const d=e.touches[0].clientY-ty0; pos += d; ty0=e.touches[0].clientY; appliquerPos(); }, {passive:true});
-  cam.addEventListener('click', ()=>{ if(!$('#reglages').classList.contains('ouvert')) basculeLecture(); });
+  canvas.addEventListener('click', ()=>{ if(!$('#reglages').classList.contains('ouvert')) basculeLecture(); });
 
-  // clavier (si utilisé sur PC)
   document.addEventListener('keydown', e=>{
     if($('#reglages').classList.contains('ouvert')) return;
     if(e.code==='Space'){ e.preventDefault(); basculeLecture(); }
@@ -421,22 +506,22 @@
     else if(e.key==='r'||e.key==='R'){ recommencer(); }
   });
 
-  // empêche la mise en veille pendant l'usage (si supporté)
   let wakeLock=null;
   async function garderEveille(){ try{ if('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); }catch(e){} }
   document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') garderEveille(); });
 
-  // ---- Démarrage ----
   $('#btnDemarrer').addEventListener('click', async ()=>{
     $('#accueil').style.display='none';
     await demarrerCam();
     await garderEveille();
     recommencer();
+    if(cfg.fond && cfg.fond!=='aucun'){ changerFond(cfg.fond); }
   });
 
   appliquer();
   recommencer();
-  raf = requestAnimationFrame(boucle);
+  requestAnimationFrame(boucleTexte);
+  requestAnimationFrame(boucleRendu);
 })();
 </script>
 </body>
