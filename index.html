@@ -123,6 +123,16 @@
     background: rgba(0,0,0,.85); color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 14px;
     display: none; max-width: 80vw; text-align: center; }
   #toast.on { display: block; }
+
+  /* Panneau "vidéo enregistrée" */
+  #apresRec { position: fixed; inset: 0; z-index: 55; background: rgba(6,8,12,.94); display: none; align-items: center; justify-content: center; padding: 22px; }
+  #apresRec.on { display: flex; }
+  #apresRec .carte { width: 100%; max-width: 460px; text-align: center; }
+  #apresRec .titre { font-size: 20px; font-weight: 800; margin-bottom: 12px; }
+  #apercuVid { width: 100%; max-height: 45vh; border-radius: 14px; background: #000; }
+  #apresRec .gros { display: block; margin: 14px auto 0; }
+  #apresRec .lien { display: block; margin-top: 10px; color: #9cf; font-size: 15px; text-decoration: underline; }
+  #apresRec .continuer { display: block; margin-top: 16px; color: #9ab; font-size: 15px; text-decoration: underline; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -146,6 +156,16 @@
   </div>
 
   <div id="toast"></div>
+
+  <div id="apresRec">
+    <div class="carte">
+      <div class="titre">✅ Vidéo enregistrée !</div>
+      <video id="apercuVid" playsinline controls></video>
+      <div class="gros btn" id="btnSaveGalerie">📥 Enregistrer dans la galerie</div>
+      <a class="lien" id="lienTelecharger" download>⬇️ Télécharger le fichier</a>
+      <span class="continuer" id="btnContinuer">Continuer sans enregistrer</span>
+    </div>
+  </div>
 
   <div id="reglages">
     <div class="btn fermer" id="btnFermer">✔️ Fermer</div>
@@ -456,12 +476,13 @@
     mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) morceaux.push(e.data); };
     mediaRecorder.onstop = () => {
       clearInterval(recTimer); recTimer = null;
-      const blob = new Blob(morceaux, {type: mime || 'video/webm'});
+      const type = mime || 'video/webm';
+      const blob = new Blob(morceaux, {type});
       const url = URL.createObjectURL(blob);
       const ext = (mime.indexOf('mp4')>=0)?'mp4':'webm';
       const nom = 'video_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.'+ext;
       ajouterVideo(url, nom, blob.size);
-      const a = document.createElement('a'); a.href=url; a.download=nom; a.click();
+      proposerSauvegarde(blob, url, nom, type);
       enReg = false; $('#btnRec').classList.remove('actif'); $('#btnRec').querySelector('.lbl').textContent='REC';
     };
     mediaRecorder.start(1000); // envoie les données chaque seconde = enregistrement complet et robuste
@@ -476,6 +497,31 @@
     d.innerHTML = '🎞️ <a href="'+url+'" download="'+nom+'" style="color:#7fd">'+nom+'</a> ('+(taille/1048576).toFixed(1)+' Mo)';
     l.prepend(d);
   }
+
+  // ---- Sauvegarde dans la galerie (menu de partage iPhone) ----
+  let derniereVideo = null;
+  function proposerSauvegarde(blob, url, nom, type){
+    if(enLecture) pause();
+    derniereVideo = { blob, url, nom, type };
+    $('#apercuVid').src = url;
+    $('#lienTelecharger').href = url; $('#lienTelecharger').download = nom;
+    $('#apresRec').classList.add('on');
+  }
+  async function enregistrerGalerie(){
+    if(!derniereVideo) return;
+    const f = new File([derniereVideo.blob], derniereVideo.nom, { type: derniereVideo.type || 'video/mp4' });
+    if(navigator.canShare && navigator.canShare({ files:[f] })){
+      try{
+        await navigator.share({ files:[f], title:'Ma vidéo' });
+        toast('👉 Choisis « Enregistrer la vidéo » pour l\'avoir dans Photos.', 3500);
+      }catch(e){ /* l'utilisateur a annulé, on ne fait rien */ }
+    } else {
+      // navigateur sans partage de fichier : on télécharge
+      $('#lienTelecharger').click();
+      toast('Vidéo téléchargée. Retrouve-la dans l\'app Fichiers → Téléchargements.', 4000);
+    }
+  }
+  function fermerApresRec(){ $('#apresRec').classList.remove('on'); $('#apercuVid').pause(); }
 
   // ---- Réglages : interactions ----
   function ouvrirReg(){ $('#reglages').classList.add('ouvert'); if(enLecture) pause(); }
@@ -499,6 +545,8 @@
   $('#btnRec').addEventListener('click', toggleRec);
   $('#btnReglages').addEventListener('click', ouvrirReg);
   $('#btnFermer').addEventListener('click', fermerReg);
+  $('#btnSaveGalerie').addEventListener('click', enregistrerGalerie);
+  $('#btnContinuer').addEventListener('click', fermerApresRec);
 
   let ty0=null;
   document.addEventListener('touchstart', e=>{ if(e.target.closest('#barre,#reglages,#accueil')) return; ty0 = e.touches[0].clientY; }, {passive:true});
