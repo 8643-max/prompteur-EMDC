@@ -253,7 +253,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 12</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 13</p>
   </div>
 
   <div id="accueil">
@@ -588,8 +588,8 @@
       ajouterVideo(url, nom, blob.size);
       proposerSauvegarde(blob, url, nom, type);
     };
-    // Sans timeslice = FPS constant (comme IMG_1494.MOV, 3 entrées stts). stop() appelé depuis ondataavailable après requestData → ordre garanti sur iOS.
-    mediaRecorder.start();
+    // Timeslice 2s : vide la RAM toutes les 2s → vidéos longues sans plantage. FFmpeg remux corrige le conteneur après.
+    mediaRecorder.start(2000);
     enReg = true; recAccum = 0; recT0 = Date.now(); recRunning = true;
     $('#btnRec').classList.add('actif');
     $('#btnPauseRec').style.display = '';
