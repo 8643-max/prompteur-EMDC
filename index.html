@@ -252,7 +252,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 10</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 11</p>
   </div>
 
   <div id="accueil">
@@ -276,7 +276,7 @@
   let pos = 0, enLecture = false, vitesse = 55, dernierT = 0;
   let miroir = true, repereOn = true;
   let mediaRecorder = null, morceaux = [], enReg = false, recStream = null;
-  let recTimer = null, recT0 = 0, recAccum = 0, recRunning = false, dureeFinale = 0;
+  let recTimer = null, recT0 = 0, recAccum = 0, recRunning = false, dureeFinale = 0, pendingStop = false;
   let modeFond = 'aucun', studioType = 'bleu';
   let selfie = null, mpPromise = null, busy = false, camPrete = false;
 
@@ -511,11 +511,15 @@
     dureeFinale = Math.round(tempsEcoule() * 1000);
     try{
       if(mediaRecorder.state === 'paused') mediaRecorder.resume();
-      if(mediaRecorder.state !== 'inactive'){
-        mediaRecorder.requestData(); // flush le dernier chunk (500ms max)
+      if(mediaRecorder.state === 'recording'){
+        pendingStop = true;
+        // Timeout de sécurité : si ondataavailable ne se déclenche pas dans 600ms on stop quand même
+        setTimeout(()=>{ if(pendingStop && mediaRecorder && mediaRecorder.state!=='inactive'){ pendingStop=false; try{mediaRecorder.stop();}catch(e){} } }, 600);
+        mediaRecorder.requestData(); // → ondataavailable → puis stop() depuis le callback
+      } else if(mediaRecorder.state !== 'inactive'){
         mediaRecorder.stop();
       }
-    }catch(e){}
+    }catch(e){ pendingStop = false; }
   }
   function toggleRec(){
     if(!flux){ alert("Démarre d'abord la caméra."); return; }
@@ -524,7 +528,10 @@
     const mime = typeSupporte(); morceaux = [];
     try{ mediaRecorder = new MediaRecorder(sourceEnregistrement(), mime?{mimeType:mime}:undefined); }
     catch(e){ alert("Enregistrement impossible : "+e.message); return; }
-    mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) morceaux.push(e.data); };
+    mediaRecorder.ondataavailable = e => {
+      if(e.data && e.data.size) morceaux.push(e.data);
+      if(pendingStop){ pendingStop = false; try{ if(mediaRecorder.state!=='inactive') mediaRecorder.stop(); }catch(err){} }
+    };
     mediaRecorder.onerror = () => {
       // Reset UI immédiatement si iOS ne déclenche pas onstop
       clearInterval(recTimer); recTimer = null; recRunning = false;
@@ -546,8 +553,8 @@
       ajouterVideo(url, nom, blob.size);
       proposerSauvegarde(blob, url, nom, type);
     };
-    // Chunks de 10s : peu d'entrées stts (comme IMG_1494.MOV) + ordre ondataavailable→onstop garanti
-    mediaRecorder.start(10000);
+    // Sans timeslice = FPS constant (comme IMG_1494.MOV, 3 entrées stts). stop() appelé depuis ondataavailable après requestData → ordre garanti sur iOS.
+    mediaRecorder.start();
     enReg = true; recAccum = 0; recT0 = Date.now(); recRunning = true;
     $('#btnRec').classList.add('actif');
     $('#btnPauseRec').style.display = '';
