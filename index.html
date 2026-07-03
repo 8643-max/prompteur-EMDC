@@ -469,27 +469,40 @@
     }
     return flux;
   }
+  function arreterEnregistrement(){
+    if(!mediaRecorder) return;
+    // Force l'arrêt quel que soit l'état (recording ou paused)
+    try{
+      if(mediaRecorder.state === 'paused') mediaRecorder.resume();
+      if(mediaRecorder.state !== 'inactive'){
+        mediaRecorder.requestData(); // récupère le dernier chunk audio/vidéo
+        mediaRecorder.stop();
+      }
+    }catch(e){}
+  }
   function toggleRec(){
     if(!flux){ alert("Démarre d'abord la caméra."); return; }
-    if(enReg){ try{ if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); }catch(e){} return; }
+    if(enReg){ arreterEnregistrement(); return; }
     if(!window.MediaRecorder){ alert("Ton navigateur ne permet pas l'enregistrement. Utilise Safari/Chrome à jour."); return; }
     const mime = typeSupporte(); morceaux = [];
     try{ mediaRecorder = new MediaRecorder(sourceEnregistrement(), mime?{mimeType:mime}:undefined); }
     catch(e){ alert("Enregistrement impossible : "+e.message); return; }
     mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) morceaux.push(e.data); };
+    mediaRecorder.onerror = () => { arreterEnregistrement(); };
     mediaRecorder.onstop = () => {
       clearInterval(recTimer); recTimer = null; recRunning = false;
       $('#btnPauseRec').style.display = 'none';
-      const type = mime || 'video/webm';
+      const type = mime || 'video/mp4';
       const blob = new Blob(morceaux, {type});
       const url = URL.createObjectURL(blob);
-      const ext = (mime.indexOf('mp4')>=0)?'mp4':'webm';
+      const ext = (mime && mime.indexOf('mp4')>=0)?'mp4':'webm';
       const nom = 'video_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.'+ext;
       ajouterVideo(url, nom, blob.size);
       proposerSauvegarde(blob, url, nom, type);
       enReg = false; $('#btnRec').classList.remove('actif'); $('#btnRec').querySelector('.lbl').textContent='REC';
     };
-    mediaRecorder.start(1000); // envoie les données chaque seconde = enregistrement complet et robuste
+    // timeslice plus grand = chunks plus propres = audio continu sans coupures
+    mediaRecorder.start(250);
     enReg = true; recAccum = 0; recT0 = Date.now(); recRunning = true;
     $('#btnRec').classList.add('actif');
     $('#btnPauseRec').style.display = '';
