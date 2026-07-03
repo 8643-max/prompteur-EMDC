@@ -250,7 +250,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 6</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 7</p>
   </div>
 
   <div id="accueil">
@@ -510,8 +510,7 @@
     try{
       if(mediaRecorder.state === 'paused') mediaRecorder.resume();
       if(mediaRecorder.state !== 'inactive'){
-        // Pas de requestData() : avec start() sans timeslice, stop() livre
-        // automatiquement toutes les données via ondataavailable avant onstop
+        mediaRecorder.requestData(); // flush le dernier chunk (500ms max)
         mediaRecorder.stop();
       }
     }catch(e){}
@@ -546,8 +545,8 @@
       ajouterVideo(url, nom, blob.size);
       proposerSauvegarde(blob, url, nom, type);
     };
-    // Pas de timeslice : 1 seul flux continu = audio propre dans CapCut iPhone
-    mediaRecorder.start();
+    // timeslice 500ms : keyframes reguliers pour CapCut + pas trop de chunks
+    mediaRecorder.start(500);
     enReg = true; recAccum = 0; recT0 = Date.now(); recRunning = true;
     $('#btnRec').classList.add('actif');
     $('#btnPauseRec').style.display = '';
