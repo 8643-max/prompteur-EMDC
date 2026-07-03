@@ -436,10 +436,10 @@
     try{
       flux = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: facing, width:{ideal:1280}, height:{ideal:720} },
-        audio: true
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
       });
     }catch(e){
-      // Micro refusé : on retente sans audio (caméra seule)
+      // Micro refusé ou contraintes non supportées : retente sans audio
       try{
         flux = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: facing, width:{ideal:1280}, height:{ideal:720} }
@@ -545,8 +545,8 @@
       ajouterVideo(url, nom, blob.size);
       proposerSauvegarde(blob, url, nom, type);
     };
-    // timeslice plus grand = chunks plus propres = audio continu sans coupures
-    mediaRecorder.start(250);
+    // Pas de timeslice : 1 seul flux continu = audio propre dans CapCut iPhone
+    mediaRecorder.start();
     enReg = true; recAccum = 0; recT0 = Date.now(); recRunning = true;
     $('#btnRec').classList.add('actif');
     $('#btnPauseRec').style.display = '';
