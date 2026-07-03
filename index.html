@@ -252,7 +252,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 7</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 8</p>
   </div>
 
   <div id="accueil">
@@ -438,10 +438,10 @@
     try{
       flux = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: facing, width:{ideal:1280}, height:{ideal:720} },
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+        audio: true
       });
     }catch(e){
-      // Micro refusé ou contraintes non supportées : retente sans audio
+      // Micro refusé : retente sans audio
       try{
         flux = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: facing, width:{ideal:1280}, height:{ideal:720} }
@@ -547,8 +547,8 @@
       ajouterVideo(url, nom, blob.size);
       proposerSauvegarde(blob, url, nom, type);
     };
-    // timeslice 500ms : keyframes reguliers pour CapCut + pas trop de chunks
-    mediaRecorder.start(500);
+    // timeslice 250ms : keyframes reguliers = CapCut peut lire la video
+    mediaRecorder.start(250);
     enReg = true; recAccum = 0; recT0 = Date.now(); recRunning = true;
     $('#btnRec').classList.add('actif');
     $('#btnPauseRec').style.display = '';
