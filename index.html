@@ -506,11 +506,12 @@
   }
   function arreterEnregistrement(){
     if(!mediaRecorder) return;
-    dureeFinale = Math.round(tempsEcoule() * 1000); // sauvegarde avant stop
+    dureeFinale = Math.round(tempsEcoule() * 1000);
     try{
       if(mediaRecorder.state === 'paused') mediaRecorder.resume();
       if(mediaRecorder.state !== 'inactive'){
-        mediaRecorder.requestData();
+        // Pas de requestData() : avec start() sans timeslice, stop() livre
+        // automatiquement toutes les données via ondataavailable avant onstop
         mediaRecorder.stop();
       }
     }catch(e){}
