@@ -274,7 +274,7 @@
   let pos = 0, enLecture = false, vitesse = 55, dernierT = 0;
   let miroir = true, repereOn = true;
   let mediaRecorder = null, morceaux = [], enReg = false, recStream = null;
-  let recTimer = null, recT0 = 0, recAccum = 0, recRunning = false;
+  let recTimer = null, recT0 = 0, recAccum = 0, recRunning = false, dureeFinale = 0;
   let modeFond = 'aucun', studioType = 'bleu';
   let selfie = null, mpPromise = null, busy = false, camPrete = false;
 
@@ -438,12 +438,47 @@
         video: { facingMode: facing, width:{ideal:1280}, height:{ideal:720} },
         audio: true
       });
-      cam.srcObject = flux;
-      await cam.play().catch(()=>{});
-      camPrete = true;
     }catch(e){
-      alert("Impossible d'accéder à la caméra.\n\nVérifie que tu as autorisé la caméra dans le navigateur.\n\nDétail : " + e.message);
+      // Micro refusé : on retente sans audio (caméra seule)
+      try{
+        flux = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facing, width:{ideal:1280}, height:{ideal:720} }
+        });
+      }catch(e2){
+        alert("Impossible d'accéder à la caméra.\n\nVérifie que tu as autorisé la caméra dans le navigateur.\n\nDétail : " + e2.message);
+        return;
+      }
     }
+    cam.srcObject = flux;
+    await cam.play().catch(()=>{});
+    camPrete = true;
+  }
+
+  // Corrige la durée dans le moov/mvhd du MP4 généré par iOS Safari
+  async function fixerDureeMp4(blob, dureeMs){
+    if(!blob || !dureeMs) return blob;
+    try{
+      const buf = await blob.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      const view = new DataView(buf);
+      for(let i=4; i<bytes.length-40; i++){
+        if(bytes[i]===0x6d&&bytes[i+1]===0x76&&bytes[i+2]===0x68&&bytes[i+3]===0x64){
+          const ver = bytes[i+4];
+          if(ver===0){
+            const ts = view.getUint32(i+16,false);
+            if(ts>0) view.setUint32(i+20, Math.round((dureeMs/1000)*ts), false);
+          } else if(ver===1){
+            const ts = view.getUint32(i+24,false);
+            if(ts>0){
+              view.setUint32(i+28,0,false);
+              view.setUint32(i+32, Math.round((dureeMs/1000)*ts), false);
+            }
+          }
+          break;
+        }
+      }
+      return new Blob([buf],{type:blob.type});
+    }catch(e){ return blob; }
   }
   async function changerCam(){ facing = (facing==='user') ? 'environment' : 'user'; camPrete=false; await demarrerCam(); }
 
@@ -471,11 +506,11 @@
   }
   function arreterEnregistrement(){
     if(!mediaRecorder) return;
-    // Force l'arrêt quel que soit l'état (recording ou paused)
+    dureeFinale = Math.round(tempsEcoule() * 1000); // sauvegarde avant stop
     try{
       if(mediaRecorder.state === 'paused') mediaRecorder.resume();
       if(mediaRecorder.state !== 'inactive'){
-        mediaRecorder.requestData(); // récupère le dernier chunk audio/vidéo
+        mediaRecorder.requestData();
         mediaRecorder.stop();
       }
     }catch(e){}
@@ -488,18 +523,27 @@
     try{ mediaRecorder = new MediaRecorder(sourceEnregistrement(), mime?{mimeType:mime}:undefined); }
     catch(e){ alert("Enregistrement impossible : "+e.message); return; }
     mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) morceaux.push(e.data); };
-    mediaRecorder.onerror = () => { arreterEnregistrement(); };
-    mediaRecorder.onstop = () => {
+    mediaRecorder.onerror = () => {
+      // Reset UI immédiatement si iOS ne déclenche pas onstop
       clearInterval(recTimer); recTimer = null; recRunning = false;
+      enReg = false;
+      $('#btnRec').classList.remove('actif'); $('#btnRec').querySelector('.lbl').textContent='REC';
+      $('#btnPauseRec').style.display = 'none';
+      arreterEnregistrement();
+    };
+    mediaRecorder.onstop = async () => {
+      clearInterval(recTimer); recTimer = null; recRunning = false;
+      enReg = false; $('#btnRec').classList.remove('actif'); $('#btnRec').querySelector('.lbl').textContent='REC';
       $('#btnPauseRec').style.display = 'none';
       const type = mime || 'video/mp4';
-      const blob = new Blob(morceaux, {type});
+      let blob = new Blob(morceaux, {type});
+      // Corrige la durée dans les métadonnées MP4 (bug iOS Safari)
+      if(type.indexOf('mp4')>=0 && dureeFinale>0) blob = await fixerDureeMp4(blob, dureeFinale);
       const url = URL.createObjectURL(blob);
       const ext = (mime && mime.indexOf('mp4')>=0)?'mp4':'webm';
       const nom = 'video_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.'+ext;
       ajouterVideo(url, nom, blob.size);
       proposerSauvegarde(blob, url, nom, type);
-      enReg = false; $('#btnRec').classList.remove('actif'); $('#btnRec').querySelector('.lbl').textContent='REC';
     };
     // timeslice plus grand = chunks plus propres = audio continu sans coupures
     mediaRecorder.start(250);
