@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
-<title>Mon Prompteur v7</title>
+<title>Mon Prompteur v12</title>
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
 <style>
   @font-face {
     font-family: 'OpenDyslexic';
@@ -252,7 +253,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 11</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 12</p>
   </div>
 
   <div id="accueil">
@@ -277,6 +278,7 @@
   let miroir = true, repereOn = true;
   let mediaRecorder = null, morceaux = [], enReg = false, recStream = null;
   let recTimer = null, recT0 = 0, recAccum = 0, recRunning = false, dureeFinale = 0, pendingStop = false;
+  let ffmpegPret = false, ffmpegObj = null;
   let modeFond = 'aucun', studioType = 'bleu';
   let selfie = null, mpPromise = null, busy = false, camPrete = false;
 
@@ -454,9 +456,37 @@
     cam.srcObject = flux;
     await cam.play().catch(()=>{});
     camPrete = true;
+    chargerFFmpeg(); // chargement en arrière-plan pendant que l'utilisateur prépare son tournage
   }
 
   // Corrige la durée dans le moov/mvhd du MP4 généré par iOS Safari
+  async function chargerFFmpeg(){
+    if(ffmpegPret) return true;
+    if(!window.FFmpeg) return false;
+    try{
+      const { createFFmpeg } = window.FFmpeg;
+      ffmpegObj = createFFmpeg({
+        corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
+        log: false
+      });
+      await ffmpegObj.load();
+      ffmpegPret = true;
+      return true;
+    }catch(e){ return false; }
+  }
+
+  async function remuxerBlob(blob){
+    if(!ffmpegPret || !ffmpegObj) return blob;
+    try{
+      const { fetchFile } = window.FFmpeg;
+      ffmpegObj.FS('writeFile','in.mp4', await fetchFile(blob));
+      await ffmpegObj.run('-i','in.mp4','-c','copy','-movflags','+faststart','out.mp4');
+      const data = ffmpegObj.FS('readFile','out.mp4');
+      try{ ffmpegObj.FS('unlink','in.mp4'); ffmpegObj.FS('unlink','out.mp4'); }catch(e){}
+      return new Blob([data.buffer],{type:'video/mp4'});
+    }catch(e){ return blob; }
+  }
+
   async function fixerDureeMp4(blob, dureeMs){
     if(!blob || !dureeMs) return blob;
     try{
@@ -547,6 +577,11 @@
       const type = mime || 'video/mp4';
       let blob = new Blob(morceaux, {type});
       if(type.indexOf('mp4')>=0 && dureeFinale>0) blob = await fixerDureeMp4(blob, dureeFinale);
+      if(type.indexOf('mp4')>=0){
+        toast('⏳ Optimisation CapCut en cours…');
+        blob = await remuxerBlob(blob);
+        cacheToast();
+      }
       const url = URL.createObjectURL(blob);
       const ext = (mime && mime.indexOf('mp4')>=0)?'mp4':'webm';
       const nom = 'video_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.'+ext;
