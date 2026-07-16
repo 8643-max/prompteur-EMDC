@@ -204,8 +204,9 @@
       <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Contraste : <span class="val" id="vCon"></span></label><input type="range" id="rCon" min="60" max="160" step="2"></div>
       <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Saturation (couleurs) : <span class="val" id="vSat"></span></label><input type="range" id="rSat" min="0" max="200" step="4"></div>
       <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Chaleur (froid ↔ chaud) : <span class="val" id="vChaleur"></span></label><input type="range" id="rChaleur" min="-50" max="50" step="2"></div>
-      <div><label style="font-weight:400; font-size:14px;">Adoucir (effet peau douce) : <span class="val" id="vAdoucir"></span></label><input type="range" id="rAdoucir" min="0" max="100" step="4"></div>
-      <p style="font-size:12.5px; color:#789; margin:10px 0 0;">💡 « Adoucir » applique un effet peau douce/soft-focus léger sur toute l'image (pas une IA qui cible juste le visage).</p>
+      <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Adoucir (effet peau douce, toute l'image) : <span class="val" id="vAdoucir"></span></label><input type="range" id="rAdoucir" min="0" max="100" step="4"></div>
+      <div><label style="font-weight:400; font-size:14px;">Lissage de peau (visage uniquement, IA) : <span class="val" id="vLissage"></span></label><input type="range" id="rLissage" min="0" max="100" step="5"></div>
+      <p style="font-size:12.5px; color:#789; margin:10px 0 0;">💡 « Adoucir » = effet doux sur toute l'image. « Lissage de peau » détecte ton visage (IA gratuite, chargée à la 1ʳᵉ activation) et lisse seulement la peau, pas les yeux/la bouche. Regarde bien la caméra pour qu'il te détecte.</p>
     </div>
 
     <div class="grp">
@@ -279,7 +280,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 16</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 17</p>
   </div>
 
   <div id="accueil">
@@ -317,7 +318,7 @@
 
   // ---- Config sauvegardée ----
   const CFG = 'prompteur_cfg_v2';
-  const defauts = { texte:"", taille:42, vitesse:55, ligne:17, lettre:5, bande:45, opacite:55, police:'dys', couleur:'#fff59d', position:'haut', repere:true, miroir:true, fond:'aucun', studio:'bleu', luminosite:100, contraste:100, saturation:100, chaleur:0, adoucir:0 };
+  const defauts = { texte:"", taille:42, vitesse:55, ligne:17, lettre:5, bande:45, opacite:55, police:'dys', couleur:'#fff59d', position:'haut', repere:true, miroir:true, fond:'aucun', studio:'bleu', luminosite:100, contraste:100, saturation:100, chaleur:0, adoucir:0, lissagePeau:0 };
   let cfg = Object.assign({}, defauts);
   try { const s = localStorage.getItem(CFG); if(s) cfg = Object.assign(cfg, JSON.parse(s)); } catch(e){}
   function sauver(){ try { localStorage.setItem(CFG, JSON.stringify(cfg)); } catch(e){} }
@@ -396,6 +397,7 @@
     maj('#rLum','#vLum',cfg.luminosite,'%'); maj('#rCon','#vCon',cfg.contraste,'%');
     maj('#rSat','#vSat',cfg.saturation,'%'); maj('#rChaleur','#vChaleur',cfg.chaleur,'');
     maj('#rAdoucir','#vAdoucir',cfg.adoucir,'%');
+    maj('#rLissage','#vLissage',cfg.lissagePeau,'%');
     document.querySelectorAll('[data-police]').forEach(c=>c.classList.toggle('sel',c.dataset.police===cfg.police));
     document.querySelectorAll('[data-pos]').forEach(c=>c.classList.toggle('sel',c.dataset.pos===cfg.position));
     document.querySelectorAll('#couleurs .pastille').forEach(p=>p.classList.toggle('sel',p.dataset.c===cfg.couleur));
@@ -523,6 +525,93 @@
   function filtreCouleurs(){
     return 'brightness('+(cfg.luminosite/100)+') contrast('+(cfg.contraste/100)+') saturate('+(cfg.saturation/100)+')';
   }
+
+  // ---- Lissage de peau par IA (MediaPipe Face Landmarker, gratuit/open source) ----
+  // Contours du visage (indices de points standards MediaPipe Face Mesh, verifies via le repo google-ai-edge/mediapipe)
+  const FL_FACE_OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
+  const FL_OEIL_G    = [263,249,390,373,374,380,381,382,362,398,384,385,386,387,388,466];
+  const FL_OEIL_D    = [33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246];
+  const FL_LEVRES    = [61,146,91,181,84,17,314,405,321,375,291,409,270,269,267,0,37,39,40,185];
+
+  let faceLandmarker = null, flChargement = null;
+  let dernierLandmarks = null, dernierTempsVideoFL = -1;
+
+  function chargerFaceLandmarker(){
+    if(faceLandmarker) return Promise.resolve(faceLandmarker);
+    if(flChargement) return flChargement;
+    toast('Chargement du lissage de peau (IA)…');
+    flChargement = (async ()=>{
+      const { FaceLandmarker, FilesetResolver } = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35');
+      const fileset = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm');
+      const fl = await FaceLandmarker.createFromOptions(fileset, {
+        baseOptions: {
+          modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+          delegate: 'CPU' // le delegate GPU est instable sur iOS Safari (verifie 2026-07)
+        },
+        runningMode: 'VIDEO',
+        numFaces: 1
+      });
+      faceLandmarker = fl;
+      cacheToast();
+      return fl;
+    })();
+    return flChargement;
+  }
+
+  function detecterVisageSiActif(){
+    if(cfg.lissagePeau<=0 || !faceLandmarker || !cam.videoWidth) { return; }
+    if(cam.currentTime === dernierTempsVideoFL) return; // pas de nouvelle frame depuis la derniere detection
+    dernierTempsVideoFL = cam.currentTime;
+    try{
+      const res = faceLandmarker.detectForVideo(cam, performance.now());
+      dernierLandmarks = (res.faceLandmarks && res.faceLandmarks.length) ? res.faceLandmarks[0] : null;
+    }catch(e){ dernierLandmarks = null; }
+  }
+
+  const workLisse = document.createElement('canvas'); const lctx = workLisse.getContext('2d');
+  const maskPeau  = document.createElement('canvas'); const mpctx = maskPeau.getContext('2d');
+  const flouPeau  = document.createElement('canvas'); const fpctx = flouPeau.getContext('2d');
+
+  function traceContourVisage(ctxM, indices, pts, w, h){
+    ctxM.beginPath();
+    indices.forEach((idx,i)=>{
+      const p = pts[idx]; if(!p) return;
+      const x = p.x*w, y = p.y*h;
+      if(i===0) ctxM.moveTo(x,y); else ctxM.lineTo(x,y);
+    });
+    ctxM.closePath();
+  }
+
+  // Retourne un canvas avec la peau du visage lissee (yeux/bouche preserves nets), ou `source` inchangee si pas de visage detecte.
+  function appliquerLissagePeau(source, w, h){
+    if(!dernierLandmarks || cfg.lissagePeau<=0) return source;
+    if(workLisse.width!==w || workLisse.height!==h){
+      workLisse.width=w; workLisse.height=h; maskPeau.width=w; maskPeau.height=h; flouPeau.width=w; flouPeau.height=h;
+    }
+    const pts = dernierLandmarks;
+    mpctx.clearRect(0,0,w,h);
+    mpctx.fillStyle = '#fff';
+    traceContourVisage(mpctx, FL_FACE_OVAL, pts, w, h); mpctx.fill();
+    mpctx.globalCompositeOperation = 'destination-out';
+    traceContourVisage(mpctx, FL_OEIL_G, pts, w, h); mpctx.fill();
+    traceContourVisage(mpctx, FL_OEIL_D, pts, w, h); mpctx.fill();
+    traceContourVisage(mpctx, FL_LEVRES, pts, w, h); mpctx.fill();
+    mpctx.globalCompositeOperation = 'source-over';
+
+    fpctx.clearRect(0,0,w,h);
+    fpctx.filter = 'blur(' + (1 + cfg.lissagePeau/100*5) + 'px)';
+    fpctx.drawImage(source,0,0,w,h);
+    fpctx.filter = 'none';
+    fpctx.globalCompositeOperation = 'destination-in';
+    fpctx.drawImage(maskPeau,0,0);
+    fpctx.globalCompositeOperation = 'source-over';
+
+    lctx.clearRect(0,0,w,h);
+    lctx.drawImage(source,0,0,w,h);
+    lctx.drawImage(flouPeau,0,0);
+    return workLisse;
+  }
+
   function blit(src){
     const w = canvas.width, h = canvas.height;
     ctx.save();
@@ -547,7 +636,11 @@
       ctx.restore();
     }
   }
-  function dessineBrut(){ dimensionne(); blit(cam); }
+  function dessineBrut(){
+    dimensionne();
+    detecterVisageSiActif();
+    blit(appliquerLissagePeau(cam, canvas.width, canvas.height));
+  }
 
   function onResults(results){
     dimensionne();
@@ -567,7 +660,8 @@
     }
     wctx.restore();
     wctx.globalCompositeOperation = 'source-over';
-    blit(work);
+    detecterVisageSiActif();
+    blit(appliquerLissagePeau(work, w, h));
   }
 
   async function boucleRendu(){
@@ -703,10 +797,14 @@
   function fmtChrono(s){ const m=Math.floor(s/60), r=Math.floor(s%60); return m+':'+(r<10?'0':'')+r; }
   function tempsEcoule(){ return recAccum + (recRunning ? (Date.now()-recT0)/1000 : 0); }
   function majChrono(){ if(!enReg) return; $('#btnRec').querySelector('.lbl').textContent = 'STOP '+fmtChrono(tempsEcoule()); }
-  // Choisit la source d'enregistrement : caméra brute si pas d'effet (durée fiable),
-  // canvas seulement si un fond studio/flou est actif (pour l'inclure dans la vidéo).
+  // Un filtre couleur/beauté "non neutre" doit aussi être gravé dans la vidéo enregistrée.
+  function filtresActifs(){
+    return cfg.luminosite!==100 || cfg.contraste!==100 || cfg.saturation!==100 || cfg.chaleur!==0 || cfg.adoucir>0 || cfg.lissagePeau>0;
+  }
+  // Choisit la source d'enregistrement : caméra brute si aucun effet (durée fiable),
+  // canvas si un fond studio/flou OU un filtre beauté/couleur est actif (pour l'inclure dans la vidéo).
   function sourceEnregistrement(){
-    if(modeFond !== 'aucun' && selfie){
+    if((modeFond !== 'aucun' && selfie) || filtresActifs()){
       try{
         const cs = canvas.captureStream(30);
         const a = flux.getAudioTracks()[0];
@@ -850,6 +948,15 @@
 
   const liens = [['#rTaille','taille'],['#rVitesse','vitesse'],['#rLigne','ligne'],['#rLettre','lettre'],['#rBande','bande'],['#rOpacite','opacite'],['#rLum','luminosite'],['#rCon','contraste'],['#rSat','saturation'],['#rChaleur','chaleur'],['#rAdoucir','adoucir']];
   liens.forEach(([id,clef])=>{ $(id).addEventListener('input', e=>{ cfg[clef]=+e.target.value; appliquer(); sauver(); }); });
+  $('#rLissage').addEventListener('input', e=>{
+    cfg.lissagePeau = +e.target.value; appliquer(); sauver();
+    if(cfg.lissagePeau>0 && !faceLandmarker){
+      chargerFaceLandmarker().catch(()=>{
+        toast('Impossible de charger le lissage de peau (vérifie ta connexion internet).', 4000);
+        cfg.lissagePeau = 0; appliquer(); sauver();
+      });
+    }
+  });
   $('#champTexte').addEventListener('input', e=>{ cfg.texte=e.target.value; texte.textContent=e.target.value||''; sauver(); });
   document.querySelectorAll('[data-police]').forEach(c=>c.addEventListener('click',()=>{ cfg.police=c.dataset.police; appliquer(); sauver(); }));
   document.querySelectorAll('[data-pos]').forEach(c=>c.addEventListener('click',()=>{ cfg.position=c.dataset.pos; recommencer(); appliquer(); sauver(); }));
@@ -897,6 +1004,7 @@
     await garderEveille();
     recommencer();
     if(cfg.fond && cfg.fond!=='aucun'){ changerFond(cfg.fond); }
+    if(cfg.lissagePeau>0){ chargerFaceLandmarker().catch(()=>{ cfg.lissagePeau=0; appliquer(); sauver(); }); }
   });
 
   appliquer();
