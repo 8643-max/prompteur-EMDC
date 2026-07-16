@@ -53,7 +53,8 @@
             mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 82%, transparent 100%);
   }
   #zoneTexte.bas { top: auto; bottom: 0; }
-  #zoneTexte.centre { top: 50%; transform: translateY(-50%); height: 60vh; }
+  #zoneTexte.centre { top: 50%; transform: translateY(-50%); }
+  #zoneTexte.plein { top: 0; height: 100vh; }
 
   #texteDefilant {
     position: absolute; left: 0; right: 0; top: 100%;
@@ -197,15 +198,31 @@
     </div>
 
     <div class="grp">
+      <label>💄 Filtres beauté / couleurs</label>
+      <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Luminosité : <span class="val" id="vLum"></span></label><input type="range" id="rLum" min="60" max="160" step="2"></div>
+      <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Contraste : <span class="val" id="vCon"></span></label><input type="range" id="rCon" min="60" max="160" step="2"></div>
+      <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Saturation (couleurs) : <span class="val" id="vSat"></span></label><input type="range" id="rSat" min="0" max="200" step="4"></div>
+      <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Chaleur (froid ↔ chaud) : <span class="val" id="vChaleur"></span></label><input type="range" id="rChaleur" min="-50" max="50" step="2"></div>
+      <div><label style="font-weight:400; font-size:14px;">Adoucir (effet peau douce) : <span class="val" id="vAdoucir"></span></label><input type="range" id="rAdoucir" min="0" max="100" step="4"></div>
+      <p style="font-size:12.5px; color:#789; margin:10px 0 0;">💡 « Adoucir » applique un effet peau douce/soft-focus léger sur toute l'image (pas une IA qui cible juste le visage).</p>
+    </div>
+
+    <div class="grp">
       <label>📝 Ton texte (colle ton script ici)</label>
       <textarea id="champTexte" placeholder="Colle ou écris ton texte ici...&#10;&#10;Chaque ligne défilera de bas en haut."></textarea>
+      <div class="btn" id="btnEnregScript" style="margin-top:10px; display:inline-flex;">💾 Enregistrer ce script</div>
+    </div>
+
+    <div class="grp">
+      <label>📂 Mes scripts sauvegardés</label>
+      <div id="listeScripts" data-vide="oui" style="color:#9ab;font-size:14px;">Aucun script sauvegardé pour l'instant.</div>
     </div>
 
     <div class="grp"><label>Taille du texte : <span class="val" id="vTaille"></span></label><input type="range" id="rTaille" min="24" max="90" step="2"></div>
     <div class="grp"><label>Vitesse de défilement : <span class="val" id="vVitesse"></span></label><input type="range" id="rVitesse" min="10" max="180" step="5"></div>
     <div class="grp"><label>Espacement des lignes : <span class="val" id="vLigne"></span></label><input type="range" id="rLigne" min="12" max="26" step="1"></div>
     <div class="grp"><label>Espacement des lettres : <span class="val" id="vLettre"></span></label><input type="range" id="rLettre" min="0" max="30" step="1"></div>
-    <div class="grp"><label>Hauteur de la zone de texte : <span class="val" id="vBande"></span></label><input type="range" id="rBande" min="25" max="70" step="5"></div>
+    <div class="grp"><label>Hauteur de la zone de texte : <span class="val" id="vBande"></span></label><input type="range" id="rBande" min="25" max="100" step="5"></div>
     <div class="grp"><label>Assombrissement du fond du texte : <span class="val" id="vOpacite"></span></label><input type="range" id="rOpacite" min="0" max="90" step="5"></div>
 
     <div class="grp">
@@ -233,6 +250,7 @@
         <div class="chip sel" data-pos="haut">En haut (près de l'objectif)</div>
         <div class="chip" data-pos="centre">Au centre</div>
         <div class="chip" data-pos="bas">En bas</div>
+        <div class="chip" data-pos="plein">Plein écran</div>
       </div>
     </div>
 
@@ -253,7 +271,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 13</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 14</p>
   </div>
 
   <div id="accueil">
@@ -284,10 +302,60 @@
 
   // ---- Config sauvegardée ----
   const CFG = 'prompteur_cfg_v2';
-  const defauts = { texte:"", taille:42, vitesse:55, ligne:17, lettre:5, bande:45, opacite:55, police:'dys', couleur:'#fff59d', position:'haut', repere:true, miroir:true, fond:'aucun', studio:'bleu' };
+  const defauts = { texte:"", taille:42, vitesse:55, ligne:17, lettre:5, bande:45, opacite:55, police:'dys', couleur:'#fff59d', position:'haut', repere:true, miroir:true, fond:'aucun', studio:'bleu', luminosite:100, contraste:100, saturation:100, chaleur:0, adoucir:0 };
   let cfg = Object.assign({}, defauts);
   try { const s = localStorage.getItem(CFG); if(s) cfg = Object.assign(cfg, JSON.parse(s)); } catch(e){}
   function sauver(){ try { localStorage.setItem(CFG, JSON.stringify(cfg)); } catch(e){} }
+
+  // ---- Bibliothèque de scripts sauvegardés ----
+  const SCRIPTS = 'prompteur_scripts_v1';
+  function chargerScripts(){ try{ const s = localStorage.getItem(SCRIPTS); return s ? JSON.parse(s) : []; }catch(e){ return []; } }
+  function sauverScripts(liste){ try{ localStorage.setItem(SCRIPTS, JSON.stringify(liste)); }catch(e){} }
+  function rafraichirListeScripts(){
+    const liste = chargerScripts();
+    const l = $('#listeScripts');
+    if(!liste.length){ l.dataset.vide='oui'; l.innerHTML='Aucun script sauvegardé pour l\'instant.'; return; }
+    l.dataset.vide='non';
+    l.innerHTML='';
+    liste.slice().reverse().forEach(s=>{
+      const d = document.createElement('div');
+      d.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:8px; background:#12161c; border-radius:10px; padding:10px 12px;';
+      const nom = document.createElement('span');
+      nom.textContent = s.nom; nom.style.cssText = 'flex:1; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+      const bC = document.createElement('span'); bC.textContent='📂 Charger'; bC.className='chip'; bC.style.cursor='pointer';
+      bC.addEventListener('click', ()=>chargerScript(s.id));
+      const bS = document.createElement('span'); bS.textContent='🗑️'; bS.className='chip'; bS.style.cursor='pointer';
+      bS.addEventListener('click', ()=>supprimerScript(s.id));
+      d.appendChild(nom); d.appendChild(bC); d.appendChild(bS);
+      l.appendChild(d);
+    });
+  }
+  function enregistrerScriptActuel(){
+    const texteActuel = $('#champTexte').value.trim();
+    if(!texteActuel){ toast('Écris ou colle du texte avant d\'enregistrer.', 2200); return; }
+    const suggestion = texteActuel.split('\n')[0].slice(0,40) || 'Script sans titre';
+    const nom = prompt('Nom de ce script :', suggestion);
+    if(!nom) return;
+    const liste = chargerScripts();
+    liste.push({ id: Date.now()+'', nom: nom.trim().slice(0,60), texte: texteActuel });
+    sauverScripts(liste);
+    rafraichirListeScripts();
+    toast('✅ Script « '+nom.trim()+' » enregistré.', 2200);
+  }
+  function chargerScript(id){
+    const s = chargerScripts().find(x=>x.id===id);
+    if(!s) return;
+    cfg.texte = s.texte; sauver(); appliquer(); recommencer();
+    if($('#reglages').classList.contains('ouvert')) fermerReg();
+    toast('📂 Script « '+s.nom+' » chargé.', 2000);
+  }
+  function supprimerScript(id){
+    const s = chargerScripts().find(x=>x.id===id);
+    if(!s) return;
+    if(!confirm('Supprimer le script « '+s.nom+' » ?')) return;
+    sauverScripts(chargerScripts().filter(x=>x.id!==id));
+    rafraichirListeScripts();
+  }
 
   function toast(msg, ms){ const t=$('#toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(t._h); if(ms) t._h=setTimeout(()=>t.classList.remove('on'), ms); }
   function cacheToast(){ $('#toast').classList.remove('on'); }
@@ -303,13 +371,16 @@
     vitesse = cfg.vitesse;
     texte.className = cfg.police === 'dys' ? 'dys' : '';
     texte.textContent = cfg.texte || "Colle ton texte dans les réglages (⚙️) puis appuie sur Lire.";
-    zone.className = ''; if(cfg.position==='bas') zone.classList.add('bas'); if(cfg.position==='centre') zone.classList.add('centre');
+    zone.className = ''; if(cfg.position==='bas') zone.classList.add('bas'); if(cfg.position==='centre') zone.classList.add('centre'); if(cfg.position==='plein') zone.classList.add('plein');
     miroir = cfg.miroir; repereOn = cfg.repere; repere.classList.toggle('cache', !repereOn);
     studioType = cfg.studio;
     $('#champTexte').value = cfg.texte;
     maj('#rTaille','#vTaille',cfg.taille,'px'); maj('#rVitesse','#vVitesse',cfg.vitesse,'');
     maj('#rLigne','#vLigne',cfg.ligne,''); maj('#rLettre','#vLettre',cfg.lettre,'');
     maj('#rBande','#vBande',cfg.bande,'%'); maj('#rOpacite','#vOpacite',cfg.opacite,'%');
+    maj('#rLum','#vLum',cfg.luminosite,'%'); maj('#rCon','#vCon',cfg.contraste,'%');
+    maj('#rSat','#vSat',cfg.saturation,'%'); maj('#rChaleur','#vChaleur',cfg.chaleur,'');
+    maj('#rAdoucir','#vAdoucir',cfg.adoucir,'%');
     document.querySelectorAll('[data-police]').forEach(c=>c.classList.toggle('sel',c.dataset.police===cfg.police));
     document.querySelectorAll('[data-pos]').forEach(c=>c.classList.toggle('sel',c.dataset.pos===cfg.position));
     document.querySelectorAll('#couleurs .pastille').forEach(p=>p.classList.toggle('sel',p.dataset.c===cfg.couleur));
@@ -328,7 +399,7 @@
     if(enLecture){
       pos -= vitesse * dt;
       const hauteur = texte.offsetHeight;
-      const finVisible = zone.classList.contains('centre') ? window.innerHeight*0.6 : (cfg.bande/100*window.innerHeight);
+      const finVisible = zone.classList.contains('plein') ? window.innerHeight : (cfg.bande/100*window.innerHeight);
       if(pos < -hauteur){ pos = finVisible; }
       texte.style.transform = 'translateY('+pos+'px)';
     }
@@ -338,7 +409,7 @@
   function lire(){ enLecture = true; dernierT = 0; $('#btnPlay').innerHTML = '<span class="ic">⏸️</span><span class="lbl">Pause</span>'; }
   function pause(){ enLecture = false; $('#btnPlay').innerHTML = '<span class="ic">▶️</span><span class="lbl">Lire</span>'; }
   function basculeLecture(){ enLecture ? pause() : lire(); }
-  function recommencer(){ pos = (cfg.bande/100*window.innerHeight); appliquerPos(); }
+  function recommencer(){ pos = (cfg.position==='plein' ? window.innerHeight : cfg.bande/100*window.innerHeight); appliquerPos(); }
 
   // ---- Décor studio (dégradés dessinés) ----
   const STUDIOS = {
@@ -360,12 +431,33 @@
     const w = cam.videoWidth || 720, h = cam.videoHeight || 1280;
     if(canvas.width !== w || canvas.height !== h){ canvas.width = w; canvas.height = h; work.width = w; work.height = h; }
   }
+  // ---- Filtres beauté / couleurs ----
+  function filtreCouleurs(){
+    return 'brightness('+(cfg.luminosite/100)+') contrast('+(cfg.contraste/100)+') saturate('+(cfg.saturation/100)+')';
+  }
   function blit(src){
     const w = canvas.width, h = canvas.height;
     ctx.save();
     if(miroir && facing==='user'){ ctx.setTransform(-1,0,0,1,w,0); } else { ctx.setTransform(1,0,0,1,0,0); }
+    ctx.filter = filtreCouleurs();
     ctx.drawImage(src, 0, 0, w, h);
+    if(cfg.adoucir > 0){
+      // Effet "peau douce" : une passe floutée mélangée par-dessus la passe nette (soft-focus global, pas une IA de peau).
+      ctx.filter = filtreCouleurs() + ' blur(' + (cfg.adoucir * 0.1) + 'px)';
+      ctx.globalAlpha = Math.min(0.55, cfg.adoucir / 100 * 0.5);
+      ctx.drawImage(src, 0, 0, w, h);
+      ctx.globalAlpha = 1;
+    }
+    ctx.filter = 'none';
     ctx.restore();
+    if(cfg.chaleur){
+      ctx.save();
+      ctx.globalCompositeOperation = 'overlay';
+      ctx.globalAlpha = Math.min(0.35, Math.abs(cfg.chaleur) / 50 * 0.28);
+      ctx.fillStyle = cfg.chaleur > 0 ? '#ff9d40' : '#3d8bff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+    }
   }
   function dessineBrut(){ dimensionne(); blit(cam); }
 
@@ -651,7 +743,7 @@
   function ouvrirReg(){ $('#reglages').classList.add('ouvert'); if(enLecture) pause(); }
   function fermerReg(){ $('#reglages').classList.remove('ouvert'); }
 
-  const liens = [['#rTaille','taille'],['#rVitesse','vitesse'],['#rLigne','ligne'],['#rLettre','lettre'],['#rBande','bande'],['#rOpacite','opacite']];
+  const liens = [['#rTaille','taille'],['#rVitesse','vitesse'],['#rLigne','ligne'],['#rLettre','lettre'],['#rBande','bande'],['#rOpacite','opacite'],['#rLum','luminosite'],['#rCon','contraste'],['#rSat','saturation'],['#rChaleur','chaleur'],['#rAdoucir','adoucir']];
   liens.forEach(([id,clef])=>{ $(id).addEventListener('input', e=>{ cfg[clef]=+e.target.value; appliquer(); sauver(); }); });
   $('#champTexte').addEventListener('input', e=>{ cfg.texte=e.target.value; texte.textContent=e.target.value||''; sauver(); });
   document.querySelectorAll('[data-police]').forEach(c=>c.addEventListener('click',()=>{ cfg.police=c.dataset.police; appliquer(); sauver(); }));
@@ -672,6 +764,7 @@
   $('#btnFermer').addEventListener('click', fermerReg);
   $('#btnSaveGalerie').addEventListener('click', enregistrerGalerie);
   $('#btnContinuer').addEventListener('click', fermerApresRec);
+  $('#btnEnregScript').addEventListener('click', enregistrerScriptActuel);
 
   let ty0=null;
   document.addEventListener('touchstart', e=>{ if(e.target.closest('#barre,#reglages,#accueil')) return; ty0 = e.touches[0].clientY; }, {passive:true});
@@ -702,6 +795,7 @@
 
   appliquer();
   recommencer();
+  rafraichirListeScripts();
   requestAnimationFrame(boucleTexte);
   requestAnimationFrame(boucleRendu);
 })();
