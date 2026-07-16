@@ -143,6 +143,7 @@
 
   <video id="cam" autoplay playsinline muted></video>
   <canvas id="sortie"></canvas>
+  <video id="videoFlottant" playsinline muted style="position:fixed; top:0; left:0; width:2px; height:2px; opacity:0.01; pointer-events:none;"></video>
 
   <div id="repere"></div>
 
@@ -164,11 +165,11 @@
 
   <div id="apresRec">
     <div class="carte">
-      <div class="titre">✅ Vidéo enregistrée !</div>
+      <div class="titre" id="titreApresRec">🎞️ Aperçu de la vidéo</div>
       <video id="apercuVid" playsinline controls></video>
       <div class="gros btn" id="btnSaveGalerie">📥 Enregistrer dans la galerie</div>
       <a class="lien" id="lienTelecharger" download>⬇️ Télécharger le fichier</a>
-      <span class="continuer" id="btnContinuer">Continuer sans enregistrer</span>
+      <span class="continuer" id="btnContinuer">Fermer</span>
     </div>
   </div>
 
@@ -205,6 +206,13 @@
       <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Chaleur (froid ↔ chaud) : <span class="val" id="vChaleur"></span></label><input type="range" id="rChaleur" min="-50" max="50" step="2"></div>
       <div><label style="font-weight:400; font-size:14px;">Adoucir (effet peau douce) : <span class="val" id="vAdoucir"></span></label><input type="range" id="rAdoucir" min="0" max="100" step="4"></div>
       <p style="font-size:12.5px; color:#789; margin:10px 0 0;">💡 « Adoucir » applique un effet peau douce/soft-focus léger sur toute l'image (pas une IA qui cible juste le visage).</p>
+    </div>
+
+    <div class="grp">
+      <label>🪟 Filmer avec une autre appli (TikTok, Snapchat…)</label>
+      <p style="font-size:14px; color:#9ab; margin:0 0 10px;">Fait flotter ton texte par-dessus n'importe quelle appli, pour lire pendant que tu filmes avec leur caméra et leurs filtres. Le texte n'apparaît pas dans leur vidéo, juste à l'écran pour toi.</p>
+      <div class="btn" id="btnFlotter">🪟 Faire flotter le texte</div>
+      <p style="font-size:12.5px; color:#789; margin:10px 0 0;">💡 Une fois la fenêtre flottante affichée, quitte l'appli et ouvre TikTok/Snapchat. Touche la fenêtre flottante pour Lire/Pause.</p>
     </div>
 
     <div class="grp">
@@ -271,7 +279,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 14</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 15</p>
   </div>
 
   <div id="accueil">
@@ -290,6 +298,13 @@
   const ctx = canvas.getContext('2d');
   const work = document.createElement('canvas'); const wctx = work.getContext('2d');
   const root = document.documentElement.style;
+
+  // ---- Fenêtre flottante (PiP) : texte seul, pour filmer avec une autre appli ----
+  const videoFlottant = $('#videoFlottant');
+  const canvasFlottant = document.createElement('canvas');
+  canvasFlottant.width = 480; canvasFlottant.height = 270;
+  const fctx = canvasFlottant.getContext('2d');
+  let flottantActif = false;
 
   let flux = null, facing = 'user';
   let pos = 0, enLecture = false, vitesse = 55, dernierT = 0;
@@ -403,13 +418,78 @@
       if(pos < -hauteur){ pos = finVisible; }
       texte.style.transform = 'translateY('+pos+'px)';
     }
+    if(flottantActif) dessineTexteFlottant();
     requestAnimationFrame(boucleTexte);
   }
   function appliquerPos(){ texte.style.transform = 'translateY('+pos+'px)'; }
-  function lire(){ enLecture = true; dernierT = 0; $('#btnPlay').innerHTML = '<span class="ic">⏸️</span><span class="lbl">Pause</span>'; }
-  function pause(){ enLecture = false; $('#btnPlay').innerHTML = '<span class="ic">▶️</span><span class="lbl">Lire</span>'; }
+  function lire(){ enLecture = true; dernierT = 0; $('#btnPlay').innerHTML = '<span class="ic">⏸️</span><span class="lbl">Pause</span>'; if(flottantActif && videoFlottant.paused) videoFlottant.play().catch(()=>{}); }
+  function pause(){ enLecture = false; $('#btnPlay').innerHTML = '<span class="ic">▶️</span><span class="lbl">Lire</span>'; if(flottantActif && !videoFlottant.paused) videoFlottant.pause(); }
   function basculeLecture(){ enLecture ? pause() : lire(); }
   function recommencer(){ pos = (cfg.position==='plein' ? window.innerHeight : cfg.bande/100*window.innerHeight); appliquerPos(); }
+
+  // ---- Fenêtre flottante (Picture-in-Picture) : texte seul, pour filmer avec une autre appli ----
+  let flottantCacheCle = '', flottantLignes = [];
+  function wrapTexte(ctx2d, texteStr, maxW){
+    const mots = texteStr.split(' ');
+    const lignes = []; let courante = '';
+    mots.forEach(mot=>{
+      const test = courante ? courante+' '+mot : mot;
+      if(ctx2d.measureText(test).width > maxW && courante){ lignes.push(courante); courante = mot; }
+      else { courante = test; }
+    });
+    if(courante) lignes.push(courante);
+    return lignes.length ? lignes : [''];
+  }
+  function dessineTexteFlottant(){
+    const w = canvasFlottant.width, h = canvasFlottant.height;
+    fctx.fillStyle = 'rgba(10,10,14,0.88)';
+    fctx.fillRect(0,0,w,h);
+    const taillePx = Math.max(16, Math.round(cfg.taille*0.5));
+    const policeCss = cfg.police==='dys' ? "'OpenDyslexic', 'Comic Sans MS', sans-serif" : 'system-ui, sans-serif';
+    fctx.font = '700 '+taillePx+'px '+policeCss;
+    fctx.textBaseline = 'top';
+    fctx.fillStyle = cfg.couleur;
+    const maxW = w-28;
+    const cle = (cfg.texte||'')+'|'+taillePx+'|'+cfg.police;
+    if(cle !== flottantCacheCle){
+      flottantCacheCle = cle;
+      const brut = (cfg.texte || 'Colle ton texte dans les réglages ⚙️.').split('\n');
+      flottantLignes = [];
+      brut.forEach(l=>{ if(l===''){ flottantLignes.push(''); } else { flottantLignes.push(...wrapTexte(fctx, l, maxW)); } });
+    }
+    const ligneH = Math.round(taillePx*(cfg.ligne/10));
+    fctx.save();
+    fctx.beginPath(); fctx.rect(0,0,w,h); fctx.clip();
+    let y = pos;
+    for(const l of flottantLignes){
+      if(y > h) break;
+      if(y > -ligneH) fctx.fillText(l, 14, y);
+      y += ligneH;
+    }
+    fctx.restore();
+  }
+  async function demarrerFlottant(){
+    if(!('pictureInPictureEnabled' in document) || !document.pictureInPictureEnabled){
+      alert("Ton navigateur ne permet pas la fenêtre flottante (Image dans l'image). Utilise Safari à jour sur iPhone.");
+      return;
+    }
+    try{
+      flottantActif = true;
+      dessineTexteFlottant();
+      const fluxTexte = canvasFlottant.captureStream(25);
+      videoFlottant.srcObject = fluxTexte;
+      await videoFlottant.play();
+      await videoFlottant.requestPictureInPicture();
+      if(!enLecture) lire();
+      toast('🪟 Fenêtre flottante activée — tu peux quitter l\'appli et filmer ailleurs.', 4000);
+    }catch(e){
+      flottantActif = false;
+      alert("Impossible d'activer la fenêtre flottante : "+e.message);
+    }
+  }
+  videoFlottant.addEventListener('play', ()=>{ if(flottantActif) lire(); });
+  videoFlottant.addEventListener('pause', ()=>{ if(flottantActif) pause(); });
+  videoFlottant.addEventListener('leavepictureinpicture', ()=>{ flottantActif = false; });
 
   // ---- Décor studio (dégradés dessinés) ----
   const STUDIOS = {
@@ -677,7 +757,7 @@
       const url = URL.createObjectURL(blob);
       const ext = (mime && mime.indexOf('mp4')>=0)?'mp4':'webm';
       const nom = 'video_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.'+ext;
-      ajouterVideo(url, nom, blob.size);
+      ajouterVideo(url, nom, blob.size, blob, type);
       proposerSauvegarde(blob, url, nom, type);
     };
     // Timeslice 2s : vide la RAM toutes les 2s → vidéos longues sans plantage. FFmpeg remux corrige le conteneur après.
@@ -706,11 +786,13 @@
       toast('On reprend ▶️', 1200);
     }
   }
-  function ajouterVideo(url,nom,taille){
+  function ajouterVideo(url,nom,taille,blob,type){
     const l = $('#listeVideos');
     if(l.dataset.vide!=='non'){ l.innerHTML=''; l.dataset.vide='non'; }
-    const d = document.createElement('div'); d.style.marginBottom='10px';
-    d.innerHTML = '🎞️ <a href="'+url+'" download="'+nom+'" style="color:#7fd">'+nom+'</a> ('+(taille/1048576).toFixed(1)+' Mo)';
+    const d = document.createElement('div');
+    d.style.cssText = 'margin-bottom:10px; color:#7fd; cursor:pointer;';
+    d.innerHTML = '🎞️ '+nom+' ('+(taille/1048576).toFixed(1)+' Mo) — toucher pour aperçu';
+    d.addEventListener('click', ()=>{ proposerSauvegarde(blob, url, nom, type); });
     l.prepend(d);
   }
 
@@ -765,6 +847,7 @@
   $('#btnSaveGalerie').addEventListener('click', enregistrerGalerie);
   $('#btnContinuer').addEventListener('click', fermerApresRec);
   $('#btnEnregScript').addEventListener('click', enregistrerScriptActuel);
+  $('#btnFlotter').addEventListener('click', demarrerFlottant);
 
   let ty0=null;
   document.addEventListener('touchstart', e=>{ if(e.target.closest('#barre,#reglages,#accueil')) return; ty0 = e.touches[0].clientY; }, {passive:true});
