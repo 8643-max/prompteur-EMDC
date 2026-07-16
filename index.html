@@ -178,6 +178,11 @@
     <h2>Réglages</h2>
     <p class="sous">Adapte tout à ton confort de lecture.</p>
 
+    <div style="text-align:center; margin-bottom:18px; position:sticky; top:56px; z-index:5;">
+      <canvas id="apercuReglages" style="width:150px; height:266px; border-radius:14px; border:2px solid #345; background:#000; box-shadow:0 4px 18px rgba(0,0,0,.6);"></canvas>
+      <p style="font-size:12px; color:#789; margin:6px 0 0;">👀 Aperçu en direct — les réglages caméra s'appliquent tout de suite ici, pas besoin de fermer.</p>
+    </div>
+
     <div class="grp">
       <label>🎬 Fond / Décor studio</label>
       <div class="polices" id="grpFond">
@@ -205,7 +210,9 @@
       <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Saturation (couleurs) : <span class="val" id="vSat"></span></label><input type="range" id="rSat" min="0" max="200" step="4"></div>
       <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Chaleur (froid ↔ chaud) : <span class="val" id="vChaleur"></span></label><input type="range" id="rChaleur" min="-50" max="50" step="2"></div>
       <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Adoucir (effet peau douce, toute l'image) : <span class="val" id="vAdoucir"></span></label><input type="range" id="rAdoucir" min="0" max="100" step="4"></div>
-      <div><label style="font-weight:400; font-size:14px;">Lissage de peau (visage uniquement, IA) : <span class="val" id="vLissage"></span></label><input type="range" id="rLissage" min="0" max="100" step="5"></div>
+      <div><label style="font-weight:400; font-size:14px;">Lissage de peau (visage uniquement, IA) : <span class="val" id="vLissage"></span></label><input type="range" id="rLissage" min="0" max="100" step="5">
+        <p id="etatVisage" style="font-size:13px; margin:6px 0 0; color:#9ab;"></p>
+      </div>
       <p style="font-size:12.5px; color:#789; margin:10px 0 0;">💡 « Adoucir » = effet doux sur toute l'image. « Lissage de peau » détecte ton visage (IA gratuite, chargée à la 1ʳᵉ activation) et lisse seulement la peau, pas les yeux/la bouche. Regarde bien la caméra pour qu'il te détecte.</p>
     </div>
 
@@ -280,7 +287,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 17</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 18</p>
   </div>
 
   <div id="accueil">
@@ -421,9 +428,19 @@
       texte.style.transform = 'translateY('+pos+'px)';
     }
     if(flottantPret) dessineTexteFlottant();
+    majApercuReglages();
     requestAnimationFrame(boucleTexte);
   }
   function appliquerPos(){ texte.style.transform = 'translateY('+pos+'px)'; }
+
+  // ---- Aperçu en direct dans le panneau réglages (voir l'effet des filtres sans fermer) ----
+  let apercuCtx = null;
+  function majApercuReglages(){
+    if(!$('#reglages').classList.contains('ouvert') || !camPrete) return;
+    const ac = $('#apercuReglages');
+    if(!apercuCtx){ ac.width = 300; ac.height = 532; apercuCtx = ac.getContext('2d'); }
+    if(canvas.width && canvas.height) apercuCtx.drawImage(canvas, 0, 0, ac.width, ac.height);
+  }
   function lire(){ enLecture = true; dernierT = 0; $('#btnPlay').innerHTML = '<span class="ic">⏸️</span><span class="lbl">Pause</span>'; if(flottantActif && videoFlottant.paused) videoFlottant.play().catch(()=>{}); }
   function pause(){ enLecture = false; $('#btnPlay').innerHTML = '<span class="ic">▶️</span><span class="lbl">Lire</span>'; if(flottantActif && !videoFlottant.paused) videoFlottant.pause(); }
   function basculeLecture(){ enLecture ? pause() : lire(); }
@@ -558,14 +575,25 @@
     return flChargement;
   }
 
+  let dernierEtatVisageAffiche = null;
+  function majEtatVisage(detecte){
+    if(detecte === dernierEtatVisageAffiche) return;
+    dernierEtatVisageAffiche = detecte;
+    const el = document.getElementById('etatVisage');
+    if(!el) return;
+    if(!faceLandmarker){ el.textContent = '⏳ Chargement du modèle…'; el.style.color = '#9ab'; }
+    else if(detecte){ el.textContent = '✅ Visage détecté'; el.style.color = '#7fd'; }
+    else { el.textContent = '⚠️ Visage non détecté — regarde bien la caméra, avec un bon éclairage.'; el.style.color = '#fb7'; }
+  }
   function detecterVisageSiActif(){
     if(cfg.lissagePeau<=0 || !faceLandmarker || !cam.videoWidth) { return; }
-    if(cam.currentTime === dernierTempsVideoFL) return; // pas de nouvelle frame depuis la derniere detection
+    if(cam.currentTime === dernierTempsVideoFL){ majEtatVisage(!!dernierLandmarks); return; } // pas de nouvelle frame depuis la derniere detection
     dernierTempsVideoFL = cam.currentTime;
     try{
       const res = faceLandmarker.detectForVideo(cam, performance.now());
       dernierLandmarks = (res.faceLandmarks && res.faceLandmarks.length) ? res.faceLandmarks[0] : null;
     }catch(e){ dernierLandmarks = null; }
+    majEtatVisage(!!dernierLandmarks);
   }
 
   const workLisse = document.createElement('canvas'); const lctx = workLisse.getContext('2d');
@@ -599,7 +627,7 @@
     mpctx.globalCompositeOperation = 'source-over';
 
     fpctx.clearRect(0,0,w,h);
-    fpctx.filter = 'blur(' + (1 + cfg.lissagePeau/100*5) + 'px)';
+    fpctx.filter = 'blur(' + (1 + cfg.lissagePeau/100*11) + 'px)';
     fpctx.drawImage(source,0,0,w,h);
     fpctx.filter = 'none';
     fpctx.globalCompositeOperation = 'destination-in';
