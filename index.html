@@ -418,7 +418,7 @@
       if(pos < -hauteur){ pos = finVisible; }
       texte.style.transform = 'translateY('+pos+'px)';
     }
-    if(flottantActif) dessineTexteFlottant();
+    if(flottantPret) dessineTexteFlottant();
     requestAnimationFrame(boucleTexte);
   }
   function appliquerPos(){ texte.style.transform = 'translateY('+pos+'px)'; }
@@ -468,24 +468,32 @@
     }
     fctx.restore();
   }
-  async function demarrerFlottant(){
+  // Prépare le flux (canvas -> vidéo cachée) à l'avance, en dehors du clic :
+  // Safari exige que requestPictureInPicture() soit appelé de façon 100% synchrone
+  // dans le gestionnaire de clic (sans await avant), sinon "not triggered by a user activation".
+  let flottantPret = false;
+  function preparerFlottant(){
+    if(flottantPret) return;
+    flottantPret = true;
+    dessineTexteFlottant();
+    videoFlottant.srcObject = canvasFlottant.captureStream(25);
+    videoFlottant.play().catch(()=>{});
+  }
+  function demarrerFlottant(){
     if(!('pictureInPictureEnabled' in document) || !document.pictureInPictureEnabled){
       alert("Ton navigateur ne permet pas la fenêtre flottante (Image dans l'image). Utilise Safari à jour sur iPhone.");
       return;
     }
-    try{
+    preparerFlottant();
+    // Appel synchrone, sans await avant : sinon iOS Safari refuse (perte de l'activation utilisateur).
+    videoFlottant.requestPictureInPicture().then(()=>{
       flottantActif = true;
-      dessineTexteFlottant();
-      const fluxTexte = canvasFlottant.captureStream(25);
-      videoFlottant.srcObject = fluxTexte;
-      await videoFlottant.play();
-      await videoFlottant.requestPictureInPicture();
       if(!enLecture) lire();
       toast('🪟 Fenêtre flottante activée — tu peux quitter l\'appli et filmer ailleurs.', 4000);
-    }catch(e){
+    }).catch(e=>{
       flottantActif = false;
       alert("Impossible d'activer la fenêtre flottante : "+e.message);
-    }
+    });
   }
   videoFlottant.addEventListener('play', ()=>{ if(flottantActif) lire(); });
   videoFlottant.addEventListener('pause', ()=>{ if(flottantActif) pause(); });
@@ -786,13 +794,28 @@
       toast('On reprend ▶️', 1200);
     }
   }
+  function videoListeVide(){
+    const l = $('#listeVideos');
+    l.dataset.vide='oui'; l.innerHTML='Aucune vidéo pour l\'instant. Appuie sur REC pendant la lecture.';
+  }
   function ajouterVideo(url,nom,taille,blob,type){
     const l = $('#listeVideos');
     if(l.dataset.vide!=='non'){ l.innerHTML=''; l.dataset.vide='non'; }
     const d = document.createElement('div');
-    d.style.cssText = 'margin-bottom:10px; color:#7fd; cursor:pointer;';
-    d.innerHTML = '🎞️ '+nom+' ('+(taille/1048576).toFixed(1)+' Mo) — toucher pour aperçu';
-    d.addEventListener('click', ()=>{ proposerSauvegarde(blob, url, nom, type); });
+    d.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:8px; background:#12161c; border-radius:10px; padding:10px 12px;';
+    const info = document.createElement('span');
+    info.textContent = '🎞️ '+nom+' ('+(taille/1048576).toFixed(1)+' Mo) — toucher pour aperçu';
+    info.style.cssText = 'flex:1; color:#7fd; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+    info.addEventListener('click', ()=>{ proposerSauvegarde(blob, url, nom, type); });
+    const bSup = document.createElement('span');
+    bSup.textContent = '🗑️'; bSup.className = 'chip'; bSup.style.cursor = 'pointer';
+    bSup.addEventListener('click', ()=>{
+      if(!confirm('Supprimer « '+nom+' » de la liste ?\n(Si tu l\'as déjà enregistrée dans ta galerie, elle y restera.)')) return;
+      try{ URL.revokeObjectURL(url); }catch(e){}
+      d.remove();
+      if(!l.children.length) videoListeVide();
+    });
+    d.appendChild(info); d.appendChild(bSup);
     l.prepend(d);
   }
 
@@ -822,7 +845,7 @@
   function fermerApresRec(){ $('#apresRec').classList.remove('on'); $('#apercuVid').pause(); }
 
   // ---- Réglages : interactions ----
-  function ouvrirReg(){ $('#reglages').classList.add('ouvert'); if(enLecture) pause(); }
+  function ouvrirReg(){ $('#reglages').classList.add('ouvert'); if(enLecture) pause(); preparerFlottant(); }
   function fermerReg(){ $('#reglages').classList.remove('ouvert'); }
 
   const liens = [['#rTaille','taille'],['#rVitesse','vitesse'],['#rLigne','ligne'],['#rLettre','lettre'],['#rBande','bande'],['#rOpacite','opacite'],['#rLum','luminosite'],['#rCon','contraste'],['#rSat','saturation'],['#rChaleur','chaleur'],['#rAdoucir','adoucir']];
