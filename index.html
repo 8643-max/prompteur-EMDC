@@ -224,6 +224,12 @@
     </div>
 
     <div class="grp">
+      <label>🌅 Flash lumière dorée (façon "golden hour") : <span class="val" id="vLumiereFlash"></span></label>
+      <input type="range" id="rLumiereFlash" min="0" max="100" step="5">
+      <p style="font-size:12.5px; color:#789; margin:10px 0 0;">Un éclairage chaud et lumineux sur toute l'image, comme un flash naturel ou la lumière dorée du coucher de soleil. S'applique à toute l'image (toi + arrière-plan), contrairement à la Lumière virtuelle qui n'éclaire que toi.</p>
+    </div>
+
+    <div class="grp">
       <label>🪟 Filmer avec une autre appli (TikTok, Snapchat…)</label>
       <p style="font-size:14px; color:#9ab; margin:0 0 10px;">Fait flotter ton texte par-dessus n'importe quelle appli, pour lire pendant que tu filmes avec leur caméra et leurs filtres. Le texte n'apparaît pas dans leur vidéo, juste à l'écran pour toi.</p>
       <div class="btn" id="btnFlotter">🪟 Faire flotter le texte</div>
@@ -294,7 +300,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 23</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 24</p>
   </div>
 
   <div id="accueil">
@@ -332,7 +338,7 @@
 
   // ---- Config sauvegardée ----
   const CFG = 'prompteur_cfg_v2';
-  const defauts = { texte:"", taille:42, vitesse:55, ligne:17, lettre:5, bande:45, opacite:55, police:'dys', couleur:'#fff59d', position:'haut', repere:true, miroir:true, fond:'aucun', studio:'bleu', luminosite:100, contraste:100, saturation:100, chaleur:0, adoucir:0, lissagePeau:0, lumiereVirt:0 };
+  const defauts = { texte:"", taille:42, vitesse:55, ligne:17, lettre:5, bande:45, opacite:55, police:'dys', couleur:'#fff59d', position:'haut', repere:true, miroir:true, fond:'aucun', studio:'bleu', luminosite:100, contraste:100, saturation:100, chaleur:0, adoucir:0, lissagePeau:0, lumiereVirt:0, lumiereFlash:0 };
   let cfg = Object.assign({}, defauts);
   try { const s = localStorage.getItem(CFG); if(s) cfg = Object.assign(cfg, JSON.parse(s)); } catch(e){}
   function sauver(){ try { localStorage.setItem(CFG, JSON.stringify(cfg)); } catch(e){} }
@@ -413,6 +419,7 @@
     maj('#rAdoucir','#vAdoucir',cfg.adoucir,'%');
     maj('#rLissage','#vLissage',cfg.lissagePeau,'%');
     maj('#rLumiereVirt','#vLumiereVirt',cfg.lumiereVirt,'%');
+    maj('#rLumiereFlash','#vLumiereFlash',cfg.lumiereFlash,'%');
     document.querySelectorAll('[data-police]').forEach(c=>c.classList.toggle('sel',c.dataset.police===cfg.police));
     document.querySelectorAll('[data-pos]').forEach(c=>c.classList.toggle('sel',c.dataset.pos===cfg.position));
     document.querySelectorAll('#couleurs .pastille').forEach(p=>p.classList.toggle('sel',p.dataset.c===cfg.couleur));
@@ -662,6 +669,32 @@
     ctxD.restore();
   }
 
+  // ---- Flash lumière dorée ("golden hour") : éclaircit + réchauffe TOUTE l'image (toi + fond),
+  // contrairement à Lumière virtuelle qui ne cible que la personne. Même principe hue-preserving
+  // (gain 'lighter') pour la partie luminosité + une teinte dorée douce en 'soft-light' (plus subtile
+  // qu'un overlay franc) + un léger halo flouté en 'screen' pour un effet "flash/golden hour" lumineux
+  // et naturel, façon effet "Flash fx"/"Golden hour" observé sur des applis de retouche photo.
+  function appliquerLumiereFlash(ctxD, w, h, intensite, src){
+    if(intensite<=0) return;
+    const f = intensite/100;
+    ctxD.save();
+    ctxD.globalCompositeOperation = 'lighter';
+    ctxD.globalAlpha = Math.min(0.55, f*0.5);
+    ctxD.drawImage(src, 0, 0, w, h);
+    ctxD.restore();
+    ctxD.save();
+    ctxD.globalCompositeOperation = 'soft-light';
+    ctxD.globalAlpha = Math.min(0.5, f*0.45);
+    ctxD.fillStyle = '#ffb066';
+    ctxD.fillRect(0, 0, w, h);
+    ctxD.restore();
+    ctxD.save();
+    ctxD.globalCompositeOperation = 'screen';
+    ctxD.globalAlpha = Math.min(0.3, f*0.25);
+    ctxD.drawImage(obtenirVersionFloue(src, w, h, 6), 0, 0, w, h);
+    ctxD.restore();
+  }
+
   // ---- Lissage de peau par IA (MediaPipe Face Landmarker, gratuit/open source) ----
   // Contours du visage (indices de points standards MediaPipe Face Mesh, verifies via le repo google-ai-edge/mediapipe)
   const FL_FACE_OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
@@ -765,15 +798,21 @@
     traceContourVisage(mpctx, FL_LEVRES, pts, w, h); mpctx.fill();
     mpctx.globalCompositeOperation = 'source-over';
 
+    // Intensité et mélange réduits (2026-07-17) : à pleine opacité le flou remplaçait entièrement
+    // la peau nette (mask blanc = alpha 1 en destination-in) -> ça se voyait comme du flou, pas
+    // comme un lissage. On garde un mélange partiel (peau nette qui transparaît un peu) pour un
+    // rendu "peau lissée" plutôt que "visage flouté".
     fpctx.clearRect(0,0,w,h);
-    fpctx.drawImage(obtenirVersionFloue(source, w, h, cfg.lissagePeau/100*16), 0, 0);
+    fpctx.drawImage(obtenirVersionFloue(source, w, h, cfg.lissagePeau/100*9), 0, 0);
     fpctx.globalCompositeOperation = 'destination-in';
     fpctx.drawImage(maskPeau,0,0);
     fpctx.globalCompositeOperation = 'source-over';
 
     lctx.clearRect(0,0,w,h);
     lctx.drawImage(source,0,0,w,h);
+    lctx.globalAlpha = Math.min(0.65, cfg.lissagePeau/100*0.6);
     lctx.drawImage(flouPeau,0,0);
+    lctx.globalAlpha = 1;
     return workLisse;
   }
 
@@ -789,13 +828,20 @@
     appliquerSaturation(ctx, w, h, cfg.saturation, src);
     if(cfg.adoucir > 0){
       // Effet "peau douce" : une passe floutée mélangée par-dessus la passe nette (soft-focus global, pas une IA de peau).
-      // Intensité relevée (2026-07-17) : à faible alpha/rayon l'effet était noyé dans le grain/la
-      // compression déjà présents sur la vidéo caméra et restait invisible ("pas plus doux que sans").
+      // IMPORTANT : on floute `ctx.canvas` (le rendu ACTUEL, déjà éclairci/contrasté/réchauffé),
+      // pas `src` (l'image brute d'avant Luminosité/Contraste/Chaleur) — flouter `src` mélangeait
+      // en réalité une version NON réglée par-dessus l'image réglée, ce qui "annulait" une partie
+      // de Luminosité/Chaleur dans les zones floutées = changement de teinte visible (constaté par
+      // ElHadj). Intensité aussi réduite : trop forte, ça rendait le visage flou plutôt que lisse.
+      const flouActuel = obtenirVersionFloue(canvas, w, h, cfg.adoucir/100*7);
+      ctx.save();
+      ctx.setTransform(1,0,0,1,0,0); // `canvas` est déjà dans son orientation finale (miroir déjà appliqué) : ne pas re-mirorer en le redessinant
       ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = Math.min(0.75, cfg.adoucir / 100 * 0.7);
-      ctx.drawImage(obtenirVersionFloue(src, w, h, cfg.adoucir/100*16), 0, 0, w, h);
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = Math.min(0.45, cfg.adoucir / 100 * 0.4);
+      ctx.drawImage(flouActuel, 0, 0, w, h);
+      ctx.restore();
     }
+    if(cfg.lumiereFlash > 0) appliquerLumiereFlash(ctx, w, h, cfg.lumiereFlash, src);
     ctx.restore();
     if(cfg.chaleur){
       ctx.save();
@@ -976,7 +1022,7 @@
   function majChrono(){ if(!enReg) return; $('#btnRec').querySelector('.lbl').textContent = 'STOP '+fmtChrono(tempsEcoule()); }
   // Un filtre couleur/beauté "non neutre" doit aussi être gravé dans la vidéo enregistrée.
   function filtresActifs(){
-    return cfg.luminosite!==100 || cfg.contraste!==100 || cfg.saturation!==100 || cfg.chaleur!==0 || cfg.adoucir>0 || cfg.lissagePeau>0 || cfg.lumiereVirt>0;
+    return cfg.luminosite!==100 || cfg.contraste!==100 || cfg.saturation!==100 || cfg.chaleur!==0 || cfg.adoucir>0 || cfg.lissagePeau>0 || cfg.lumiereVirt>0 || cfg.lumiereFlash>0;
   }
   // Choisit la source d'enregistrement : caméra brute si aucun effet (durée fiable),
   // canvas si un fond studio/flou OU un filtre beauté/couleur est actif (pour l'inclure dans la vidéo).
@@ -1143,6 +1189,9 @@
       });
     }
   });
+  $('#rLumiereFlash').addEventListener('input', e=>{
+    cfg.lumiereFlash = +e.target.value; appliquer(); sauver();
+  });
   $('#champTexte').addEventListener('input', e=>{ cfg.texte=e.target.value; texte.textContent=e.target.value||''; sauver(); });
   document.querySelectorAll('[data-police]').forEach(c=>c.addEventListener('click',()=>{ cfg.police=c.dataset.police; appliquer(); sauver(); }));
   document.querySelectorAll('[data-pos]').forEach(c=>c.addEventListener('click',()=>{ cfg.position=c.dataset.pos; recommencer(); appliquer(); sauver(); }));
@@ -1166,7 +1215,7 @@
   $('#btnResetFiltres').addEventListener('click', ()=>{
     cfg.luminosite = defauts.luminosite; cfg.contraste = defauts.contraste; cfg.saturation = defauts.saturation;
     cfg.chaleur = defauts.chaleur; cfg.adoucir = defauts.adoucir; cfg.lissagePeau = defauts.lissagePeau;
-    cfg.lumiereVirt = defauts.lumiereVirt;
+    cfg.lumiereVirt = defauts.lumiereVirt; cfg.lumiereFlash = defauts.lumiereFlash;
     appliquer(); sauver();
     toast('↩️ Filtres beauté/couleur réinitialisés.', 2000);
   });
