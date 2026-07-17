@@ -224,9 +224,9 @@
     </div>
 
     <div class="grp">
-      <label>🌅 Flash lumière dorée (façon "golden hour") : <span class="val" id="vLumiereFlash"></span></label>
+      <label>📸 Flash lumière : <span class="val" id="vLumiereFlash"></span></label>
       <input type="range" id="rLumiereFlash" min="0" max="100" step="5">
-      <p style="font-size:12.5px; color:#789; margin:10px 0 0;">Un éclairage chaud et lumineux sur toute l'image, comme un flash naturel ou la lumière dorée du coucher de soleil. S'applique à toute l'image (toi + arrière-plan), contrairement à la Lumière virtuelle qui n'éclaire que toi.</p>
+      <p style="font-size:12.5px; color:#789; margin:10px 0 0;">Un flash blanc franc, comme celui d'un téléphone — uniquement sur toi, pas sur le fond. Utilise la même IA que Lumière virtuelle (chargée à la 1ʳᵉ activation). Les deux peuvent se cumuler.</p>
     </div>
 
     <div class="grp">
@@ -300,7 +300,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 24</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 25</p>
   </div>
 
   <div id="accueil">
@@ -669,29 +669,27 @@
     ctxD.restore();
   }
 
-  // ---- Flash lumière dorée ("golden hour") : éclaircit + réchauffe TOUTE l'image (toi + fond),
-  // contrairement à Lumière virtuelle qui ne cible que la personne. Même principe hue-preserving
-  // (gain 'lighter') pour la partie luminosité + une teinte dorée douce en 'soft-light' (plus subtile
-  // qu'un overlay franc) + un léger halo flouté en 'screen' pour un effet "flash/golden hour" lumineux
-  // et naturel, façon effet "Flash fx"/"Golden hour" observé sur des applis de retouche photo.
-  function appliquerLumiereFlash(ctxD, w, h, intensite, src){
-    if(intensite<=0) return;
+  // ---- Flash lumière : un flash blanc franc, comme celui d'un téléphone, UNIQUEMENT sur la
+  // personne (masquée via la segmentation, comme Lumière virtuelle) — le fond n'est pas touché.
+  // Corrigé (2026-07-17) : la 1ʳᵉ version éclaircissait toute l'image (fond compris) et ajoutait
+  // une teinte dorée artificielle (#ffb066). ElHadj a précisé : sur les photos de référence la peau
+  // qui "dore" est une peau claire éclairée par un flash BLANC (pas une lumière colorée) — la
+  // couleur perçue vient de la peau, pas de la lumière. Donc : gain proportionnel (pas de teinte
+  // ajoutée, préserve les vraies couleurs de peau de chacun) + masque personne uniquement, plus
+  // intense qu'un simple gain pour lire comme un vrai flash (pas juste "plus lumineux").
+  function appliquerLumiereFlash(ctxD, maskImage, w, h, intensite){
+    if(intensite<=0 || !maskImage) return;
     const f = intensite/100;
+    if(lumiereTeintee.width!==w || lumiereTeintee.height!==h){ lumiereTeintee.width=w; lumiereTeintee.height=h; }
+    ltctx2.clearRect(0,0,w,h);
+    ltctx2.drawImage(ctxD.canvas,0,0,w,h);
+    ltctx2.globalCompositeOperation = 'multiply';
+    ltctx2.drawImage(maskImage,0,0,w,h);
+    ltctx2.globalCompositeOperation = 'source-over';
     ctxD.save();
     ctxD.globalCompositeOperation = 'lighter';
-    ctxD.globalAlpha = Math.min(0.55, f*0.5);
-    ctxD.drawImage(src, 0, 0, w, h);
-    ctxD.restore();
-    ctxD.save();
-    ctxD.globalCompositeOperation = 'soft-light';
-    ctxD.globalAlpha = Math.min(0.5, f*0.45);
-    ctxD.fillStyle = '#ffb066';
-    ctxD.fillRect(0, 0, w, h);
-    ctxD.restore();
-    ctxD.save();
-    ctxD.globalCompositeOperation = 'screen';
-    ctxD.globalAlpha = Math.min(0.3, f*0.25);
-    ctxD.drawImage(obtenirVersionFloue(src, w, h, 6), 0, 0, w, h);
+    ctxD.globalAlpha = Math.min(1, f*0.95);
+    ctxD.drawImage(lumiereTeintee, 0, 0, w, h);
     ctxD.restore();
   }
 
@@ -841,7 +839,6 @@
       ctx.drawImage(flouActuel, 0, 0, w, h);
       ctx.restore();
     }
-    if(cfg.lumiereFlash > 0) appliquerLumiereFlash(ctx, w, h, cfg.lumiereFlash, src);
     ctx.restore();
     if(cfg.chaleur){
       ctx.save();
@@ -882,11 +879,12 @@
       wctx.globalCompositeOperation = 'source-over';
     }
     if(cfg.lumiereVirt>0) appliquerLumiereVirtuelle(wctx, results.segmentationMask, w, h, cfg.lumiereVirt);
+    if(cfg.lumiereFlash>0) appliquerLumiereFlash(wctx, results.segmentationMask, w, h, cfg.lumiereFlash);
     detecterVisageSiActif();
     blit(appliquerLissagePeau(work, w, h));
   }
 
-  function segmentationNecessaire(){ return modeFond !== 'aucun' || cfg.lumiereVirt > 0; }
+  function segmentationNecessaire(){ return modeFond !== 'aucun' || cfg.lumiereVirt > 0 || cfg.lumiereFlash > 0; }
   async function boucleRendu(){
     if(camPrete){
       if(!segmentationNecessaire() || !selfie){ dessineBrut(); }
@@ -1191,6 +1189,12 @@
   });
   $('#rLumiereFlash').addEventListener('input', e=>{
     cfg.lumiereFlash = +e.target.value; appliquer(); sauver();
+    if(cfg.lumiereFlash>0 && !selfie){
+      chargerMP().catch(()=>{
+        toast('Impossible de charger le flash lumière (vérifie ta connexion internet).', 4000);
+        cfg.lumiereFlash = 0; appliquer(); sauver();
+      });
+    }
   });
   $('#champTexte').addEventListener('input', e=>{ cfg.texte=e.target.value; texte.textContent=e.target.value||''; sauver(); });
   document.querySelectorAll('[data-police]').forEach(c=>c.addEventListener('click',()=>{ cfg.police=c.dataset.police; appliquer(); sauver(); }));
@@ -1248,6 +1252,7 @@
     if(cfg.fond && cfg.fond!=='aucun'){ changerFond(cfg.fond); }
     if(cfg.lissagePeau>0){ chargerFaceLandmarker().catch(()=>{ cfg.lissagePeau=0; appliquer(); sauver(); }); }
     if(cfg.lumiereVirt>0 && !selfie){ chargerMP().catch(()=>{ cfg.lumiereVirt=0; appliquer(); sauver(); }); }
+    if(cfg.lumiereFlash>0 && !selfie){ chargerMP().catch(()=>{ cfg.lumiereFlash=0; appliquer(); sauver(); }); }
   });
 
   appliquer();
