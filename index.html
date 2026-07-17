@@ -156,7 +156,10 @@
     <div class="btn" id="btnMoins"><span class="ic">🐢</span></div>
     <div class="btn" id="btnPlus"><span class="ic">🐇</span></div>
     <div class="btn rec" id="btnRec"><span class="ic">⏺</span><span class="lbl">REC</span></div>
+    <div class="btn" id="btnPhoto"><span class="ic">📷</span><span class="lbl">Photo</span></div>
     <div class="btn" id="btnPauseRec" style="display:none;"><span class="ic">⏸️</span><span class="lbl">Pause vidéo</span></div>
+    <div class="btn" id="btnAnnuler10s" style="display:none;"><span class="ic">⏪</span><span class="lbl">-10s</span></div>
+    <div class="btn" id="btnRevoir" style="display:none;"><span class="ic">▶️</span><span class="lbl">Revoir</span></div>
     <div class="btn" id="btnCam"><span class="ic">🔄</span></div>
     <div class="btn" id="btnReglages"><span class="ic">⚙️</span></div>
   </div>
@@ -167,6 +170,7 @@
     <div class="carte">
       <div class="titre" id="titreApresRec">🎞️ Aperçu de la vidéo</div>
       <video id="apercuVid" playsinline controls></video>
+      <img id="apercuPhoto" style="width:100%; max-height:45vh; border-radius:14px; background:#000; object-fit:contain; display:none;">
       <div class="gros btn" id="btnSaveGalerie">📥 Enregistrer dans la galerie</div>
       <a class="lien" id="lienTelecharger" download>⬇️ Télécharger le fichier</a>
       <span class="continuer" id="btnContinuer">Fermer</span>
@@ -301,7 +305,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 34</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 35</p>
   </div>
 
   <div id="accueil">
@@ -1136,6 +1140,17 @@
     return '';
   }
   function fmtChrono(s){ const m=Math.floor(s/60), r=Math.floor(s%60); return m+':'+(r<10?'0':'')+r; }
+  // ---- Photo (capture d'une image fixe depuis le rendu actuel du canvas, filtres inclus) ----
+  function prendrePhoto(){
+    if(!camPrete){ toast("Démarre d'abord la caméra.", 2500); return; }
+    canvas.toBlob(blob=>{
+      if(!blob){ toast('Photo impossible.', 2500); return; }
+      const url = URL.createObjectURL(blob);
+      const nom = 'photo_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.jpg';
+      ajouterVideo(url, nom, blob.size, blob, 'image/jpeg');
+      proposerSauvegarde(blob, url, nom, 'image/jpeg');
+    }, 'image/jpeg', 0.92);
+  }
   function tempsEcoule(){ return recAccum + (recRunning ? (Date.now()-recT0)/1000 : 0); }
   function majChrono(){ if(!enReg) return; $('#btnRec').querySelector('.lbl').textContent = 'STOP '+fmtChrono(tempsEcoule()); }
   // Un filtre couleur/beauté "non neutre" doit aussi être gravé dans la vidéo enregistrée.
@@ -1198,7 +1213,9 @@
     try{ mediaRecorder = new MediaRecorder(sourceEnregistrement(), mime?{mimeType:mime}:undefined); }
     catch(e){ alert("Enregistrement impossible : "+e.message); return; }
     mediaRecorder.ondataavailable = e => {
-      if(e.data && e.data.size) morceaux.push(e.data);
+      // On garde l'horodatage de chaque morceau pour pouvoir retirer "les 10 dernières secondes"
+      // (bouton -10s) sans devoir tout ré-enregistrer depuis le début.
+      if(e.data && e.data.size) morceaux.push({ blob: e.data, t: Date.now() });
       if(pendingStop){ pendingStop = false; try{ if(mediaRecorder.state!=='inactive') mediaRecorder.stop(); }catch(err){} }
     };
     mediaRecorder.onerror = () => {
@@ -1207,14 +1224,16 @@
       enReg = false;
       $('#btnRec').classList.remove('actif'); $('#btnRec').querySelector('.lbl').textContent='REC';
       $('#btnPauseRec').style.display = 'none';
+      $('#btnAnnuler10s').style.display = 'none'; $('#btnRevoir').style.display = 'none';
       arreterEnregistrement();
     };
     mediaRecorder.onstop = async () => {
       clearInterval(recTimer); recTimer = null; recRunning = false;
       enReg = false; $('#btnRec').classList.remove('actif'); $('#btnRec').querySelector('.lbl').textContent='REC';
       $('#btnPauseRec').style.display = 'none';
+      $('#btnAnnuler10s').style.display = 'none'; $('#btnRevoir').style.display = 'none';
       const type = mime || 'video/mp4';
-      let blob = new Blob(morceaux, {type});
+      let blob = new Blob(morceaux.map(m=>m.blob), {type});
       if(type.indexOf('mp4')>=0 && dureeFinale>0) blob = await fixerDureeMp4(blob, dureeFinale);
       if(type.indexOf('mp4')>=0){
         toast('⏳ Optimisation CapCut en cours…');
@@ -1233,8 +1252,48 @@
     $('#btnRec').classList.add('actif');
     $('#btnPauseRec').style.display = '';
     $('#btnPauseRec').innerHTML = '<span class="ic">⏸️</span><span class="lbl">Pause vidéo</span>';
+    $('#btnAnnuler10s').style.display = ''; $('#btnRevoir').style.display = '';
     recTimer = setInterval(majChrono, 250); majChrono();
     if(!enLecture) lire();
+  }
+  // Recule le chrono affiché/enregistré de `secs` secondes (utilisé par -10s pour que la durée
+  // finale du fichier corresponde à ce qui reste réellement après suppression).
+  function reculerChrono(secs){
+    recAccum = Math.max(0, tempsEcoule() - secs);
+    if(recRunning) recT0 = Date.now();
+    majChrono();
+  }
+  // Retire les ~10 dernières secondes SANS arrêter l'enregistrement : l'enregistrement continue en
+  // arrière-plan pendant qu'on filme, donc la suite s'enchaîne naturellement, sans avoir à tout
+  // recommencer (demande ElHadj). On ne touche jamais au tout premier morceau : il contient
+  // l'en-tête du fichier (indispensable pour que la vidéo reste lisible).
+  function annulerDixSecondes(){
+    if(!enReg || morceaux.length<=1){ toast("Rien à annuler pour l'instant.", 2000); return; }
+    const dernierT = morceaux[morceaux.length-1].t;
+    const seuil = dernierT - 10000;
+    let n = 0;
+    while(n < morceaux.length-1 && morceaux[morceaux.length-1-n].t >= seuil){ n++; }
+    if(n===0) n = 1;
+    morceaux.splice(morceaux.length-n, n);
+    reculerChrono(10);
+    toast('⏪ ~10 dernières secondes supprimées — la vidéo continue, tu peux reprendre normalement.', 2800);
+  }
+  // Aperçu rapide de la vidéo telle qu'elle est ACTUELLEMENT (après suppression éventuelle), pour
+  // voir où on en est avant de continuer à filmer. L'enregistrement continue derrière : ce n'est
+  // qu'un aperçu, pas le fichier final (le bouton Enregistrer est masqué pendant cet aperçu).
+  function revoirPointDeReprise(){
+    if(!enReg || !morceaux.length){ toast('Rien à revoir pour l\'instant.', 2000); return; }
+    const type = (mediaRecorder && mediaRecorder.mimeType) || typeSupporte() || 'video/mp4';
+    const url = URL.createObjectURL(new Blob(morceaux.map(m=>m.blob), {type}));
+    $('#apercuPhoto').style.display = 'none'; $('#apercuPhoto').removeAttribute('src');
+    $('#apercuVid').style.display = '';
+    $('#titreApresRec').textContent = '▶️ Reprise à partir d\'ici';
+    $('#apercuVid').src = url;
+    $('#apercuVid').play().catch(()=>{});
+    $('#btnSaveGalerie').style.display = 'none';
+    $('#lienTelecharger').style.display = 'none';
+    derniereVideo = null;
+    $('#apresRec').classList.add('on');
   }
   // Pause / reprise de l'enregistrement (la vidéo continue dans le même fichier)
   function togglePauseRec(){
@@ -1255,15 +1314,16 @@
   }
   function videoListeVide(){
     const l = $('#listeVideos');
-    l.dataset.vide='oui'; l.innerHTML='Aucune vidéo pour l\'instant. Appuie sur REC pendant la lecture.';
+    l.dataset.vide='oui'; l.innerHTML='Aucune vidéo ni photo pour l\'instant. Appuie sur REC ou Photo pendant la lecture.';
   }
   function ajouterVideo(url,nom,taille,blob,type){
+    const estPhoto = (type||'').indexOf('image/')===0;
     const l = $('#listeVideos');
     if(l.dataset.vide!=='non'){ l.innerHTML=''; l.dataset.vide='non'; }
     const d = document.createElement('div');
     d.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:8px; background:#12161c; border-radius:10px; padding:10px 12px;';
     const info = document.createElement('span');
-    info.textContent = '🎞️ '+nom+' ('+(taille/1048576).toFixed(1)+' Mo) — toucher pour aperçu';
+    info.textContent = (estPhoto?'🖼️ ':'🎞️ ')+nom+' ('+(taille/1048576).toFixed(1)+' Mo) — toucher pour aperçu';
     info.style.cssText = 'flex:1; color:#7fd; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
     info.addEventListener('click', ()=>{ proposerSauvegarde(blob, url, nom, type); });
     const bSup = document.createElement('span');
@@ -1283,25 +1343,34 @@
   function proposerSauvegarde(blob, url, nom, type){
     if(enLecture) pause();
     derniereVideo = { blob, url, nom, type };
-    $('#apercuVid').src = url;
+    const estPhoto = (type||'').indexOf('image/')===0;
+    $('#apercuVid').style.display = estPhoto ? 'none' : '';
+    $('#apercuPhoto').style.display = estPhoto ? '' : 'none';
+    if(estPhoto){ $('#apercuVid').pause(); $('#apercuVid').removeAttribute('src'); $('#apercuPhoto').src = url; }
+    else { $('#apercuPhoto').removeAttribute('src'); $('#apercuVid').src = url; }
+    $('#titreApresRec').textContent = estPhoto ? '🖼️ Aperçu de la photo' : '🎞️ Aperçu de la vidéo';
     $('#lienTelecharger').href = url; $('#lienTelecharger').download = nom;
     $('#apresRec').classList.add('on');
   }
   async function enregistrerGalerie(){
     if(!derniereVideo) return;
+    const estPhoto = (derniereVideo.type||'').indexOf('image/')===0;
     const f = new File([derniereVideo.blob], derniereVideo.nom, { type: derniereVideo.type || 'video/mp4' });
     if(navigator.canShare && navigator.canShare({ files:[f] })){
       try{
-        await navigator.share({ files:[f], title:'Ma vidéo' });
-        toast('👉 Choisis « Enregistrer la vidéo » pour l\'avoir dans Photos.', 3500);
+        await navigator.share({ files:[f], title: estPhoto?'Ma photo':'Ma vidéo' });
+        toast(estPhoto ? '👉 Choisis « Enregistrer l\'image » pour l\'avoir dans Photos.' : '👉 Choisis « Enregistrer la vidéo » pour l\'avoir dans Photos.', 3500);
       }catch(e){ /* l'utilisateur a annulé, on ne fait rien */ }
     } else {
       // navigateur sans partage de fichier : on télécharge
       $('#lienTelecharger').click();
-      toast('Vidéo téléchargée. Retrouve-la dans l\'app Fichiers → Téléchargements.', 4000);
+      toast((estPhoto?'Photo':'Vidéo')+' téléchargée. Retrouve-la dans l\'app Fichiers → Téléchargements.', 4000);
     }
   }
-  function fermerApresRec(){ $('#apresRec').classList.remove('on'); $('#apercuVid').pause(); }
+  function fermerApresRec(){
+    $('#apresRec').classList.remove('on'); $('#apercuVid').pause();
+    $('#btnSaveGalerie').style.display = ''; $('#lienTelecharger').style.display = '';
+  }
 
   // ---- Réglages : interactions ----
   function ouvrirReg(){ $('#reglages').classList.add('ouvert'); if(enLecture) pause(); preparerFlottant(); }
@@ -1353,6 +1422,9 @@
   $('#btnPlus').addEventListener('click',()=>{ cfg.vitesse=Math.min(180,cfg.vitesse+10); appliquer(); sauver(); toast('Vitesse : '+cfg.vitesse,900); });
   $('#btnCam').addEventListener('click', changerCam);
   $('#btnRec').addEventListener('click', toggleRec);
+  $('#btnPhoto').addEventListener('click', prendrePhoto);
+  $('#btnAnnuler10s').addEventListener('click', annulerDixSecondes);
+  $('#btnRevoir').addEventListener('click', revoirPointDeReprise);
   $('#btnPauseRec').addEventListener('click', togglePauseRec);
   $('#btnReglages').addEventListener('click', ouvrirReg);
   $('#btnFermer').addEventListener('click', fermerReg);
