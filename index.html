@@ -217,6 +217,12 @@
     </div>
 
     <div class="grp">
+      <label>💡 Lumière virtuelle (éclaire toi, pas le fond) : <span class="val" id="vLumiereVirt"></span></label>
+      <input type="range" id="rLumiereVirt" min="0" max="100" step="5">
+      <p style="font-size:12.5px; color:#789; margin:10px 0 0;">Simule une lumière braquée sur toi dans une pièce sombre : ça t'éclaircit, sans éclaircir l'arrière-plan (qui reste sombre). Utilise la même IA que le fond flou (chargée à la 1ʳᵉ activation). Limite honnête : c'est du traitement d'image, pas une vraie lumière — ça aide en pièce peu éclairée, mais dans le noir presque total il n'y a presque rien à récupérer sur l'image de la caméra, et ça ajoute un peu de grain.</p>
+    </div>
+
+    <div class="grp">
       <label>🪟 Filmer avec une autre appli (TikTok, Snapchat…)</label>
       <p style="font-size:14px; color:#9ab; margin:0 0 10px;">Fait flotter ton texte par-dessus n'importe quelle appli, pour lire pendant que tu filmes avec leur caméra et leurs filtres. Le texte n'apparaît pas dans leur vidéo, juste à l'écran pour toi.</p>
       <div class="btn" id="btnFlotter">🪟 Faire flotter le texte</div>
@@ -287,7 +293,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 19</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 20</p>
   </div>
 
   <div id="accueil">
@@ -325,7 +331,7 @@
 
   // ---- Config sauvegardée ----
   const CFG = 'prompteur_cfg_v2';
-  const defauts = { texte:"", taille:42, vitesse:55, ligne:17, lettre:5, bande:45, opacite:55, police:'dys', couleur:'#fff59d', position:'haut', repere:true, miroir:true, fond:'aucun', studio:'bleu', luminosite:100, contraste:100, saturation:100, chaleur:0, adoucir:0, lissagePeau:0 };
+  const defauts = { texte:"", taille:42, vitesse:55, ligne:17, lettre:5, bande:45, opacite:55, police:'dys', couleur:'#fff59d', position:'haut', repere:true, miroir:true, fond:'aucun', studio:'bleu', luminosite:100, contraste:100, saturation:100, chaleur:0, adoucir:0, lissagePeau:0, lumiereVirt:0 };
   let cfg = Object.assign({}, defauts);
   try { const s = localStorage.getItem(CFG); if(s) cfg = Object.assign(cfg, JSON.parse(s)); } catch(e){}
   function sauver(){ try { localStorage.setItem(CFG, JSON.stringify(cfg)); } catch(e){} }
@@ -405,6 +411,7 @@
     maj('#rSat','#vSat',cfg.saturation,'%'); maj('#rChaleur','#vChaleur',cfg.chaleur,'');
     maj('#rAdoucir','#vAdoucir',cfg.adoucir,'%');
     maj('#rLissage','#vLissage',cfg.lissagePeau,'%');
+    maj('#rLumiereVirt','#vLumiereVirt',cfg.lumiereVirt,'%');
     document.querySelectorAll('[data-police]').forEach(c=>c.classList.toggle('sel',c.dataset.police===cfg.police));
     document.querySelectorAll('[data-pos]').forEach(c=>c.classList.toggle('sel',c.dataset.pos===cfg.position));
     document.querySelectorAll('#couleurs .pastille').forEach(p=>p.classList.toggle('sel',p.dataset.c===cfg.couleur));
@@ -605,6 +612,21 @@
     return flouRendu;
   }
 
+  // ---- Lumière virtuelle : éclaircit seulement la personne (via le masque de segmentation), pas le fond ----
+  // Le masque MediaPipe est une image en niveaux de gris (blanc=personne, noir=fond), PAS un canal
+  // alpha. Le fusionner directement en mode 'screen' fonctionne exactement comme voulu : sur les
+  // pixels noirs (fond), le calcul du mode 'screen' redonne exactement la couleur de fond d'origine
+  // (inchangée, quel que soit globalAlpha) ; sur les pixels blancs (personne), ça éclaircit
+  // proportionnellement à l'intensité. Pas besoin de masquage par transparence.
+  function appliquerLumiereVirtuelle(ctxD, maskImage, w, h, intensite){
+    if(intensite<=0 || !maskImage) return;
+    ctxD.save();
+    ctxD.globalCompositeOperation = 'screen';
+    ctxD.globalAlpha = Math.min(0.9, intensite/100*0.85);
+    ctxD.drawImage(maskImage, 0, 0, w, h);
+    ctxD.restore();
+  }
+
   // ---- Lissage de peau par IA (MediaPipe Face Landmarker, gratuit/open source) ----
   // Contours du visage (indices de points standards MediaPipe Face Mesh, verifies via le repo google-ai-edge/mediapipe)
   const FL_FACE_OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
@@ -736,26 +758,35 @@
   function onResults(results){
     dimensionne();
     const w = work.width, h = work.height;
-    wctx.save();
-    wctx.clearRect(0,0,w,h);
-    wctx.drawImage(results.segmentationMask, 0, 0, w, h);
-    wctx.globalCompositeOperation = 'source-in';
-    wctx.drawImage(results.image, 0, 0, w, h);
-    wctx.globalCompositeOperation = 'destination-over';
-    if(modeFond === 'flou'){
-      wctx.drawImage(obtenirVersionFloue(results.image, w, h, 10), 0, 0, w, h);
+    if(modeFond === 'aucun'){
+      // Pas de remplacement de fond demandé, mais la segmentation tourne quand même
+      // (pour la lumière virtuelle) : on garde l'image caméra normale telle quelle.
+      wctx.clearRect(0,0,w,h);
+      wctx.drawImage(results.image, 0, 0, w, h);
     } else {
-      dessineStudio(wctx, w, h, studioType);
+      wctx.save();
+      wctx.clearRect(0,0,w,h);
+      wctx.drawImage(results.segmentationMask, 0, 0, w, h);
+      wctx.globalCompositeOperation = 'source-in';
+      wctx.drawImage(results.image, 0, 0, w, h);
+      wctx.globalCompositeOperation = 'destination-over';
+      if(modeFond === 'flou'){
+        wctx.drawImage(obtenirVersionFloue(results.image, w, h, 10), 0, 0, w, h);
+      } else {
+        dessineStudio(wctx, w, h, studioType);
+      }
+      wctx.restore();
+      wctx.globalCompositeOperation = 'source-over';
     }
-    wctx.restore();
-    wctx.globalCompositeOperation = 'source-over';
+    if(cfg.lumiereVirt>0) appliquerLumiereVirtuelle(wctx, results.segmentationMask, w, h, cfg.lumiereVirt);
     detecterVisageSiActif();
     blit(appliquerLissagePeau(work, w, h));
   }
 
+  function segmentationNecessaire(){ return modeFond !== 'aucun' || cfg.lumiereVirt > 0; }
   async function boucleRendu(){
     if(camPrete){
-      if(modeFond === 'aucun' || !selfie){ dessineBrut(); }
+      if(!segmentationNecessaire() || !selfie){ dessineBrut(); }
       else if(!busy){ busy = true; try { await selfie.send({image: cam}); } catch(e){} busy = false; }
     }
     requestAnimationFrame(boucleRendu);
@@ -888,7 +919,7 @@
   function majChrono(){ if(!enReg) return; $('#btnRec').querySelector('.lbl').textContent = 'STOP '+fmtChrono(tempsEcoule()); }
   // Un filtre couleur/beauté "non neutre" doit aussi être gravé dans la vidéo enregistrée.
   function filtresActifs(){
-    return cfg.luminosite!==100 || cfg.contraste!==100 || cfg.saturation!==100 || cfg.chaleur!==0 || cfg.adoucir>0 || cfg.lissagePeau>0;
+    return cfg.luminosite!==100 || cfg.contraste!==100 || cfg.saturation!==100 || cfg.chaleur!==0 || cfg.adoucir>0 || cfg.lissagePeau>0 || cfg.lumiereVirt>0;
   }
   // Choisit la source d'enregistrement : caméra brute si aucun effet (durée fiable),
   // canvas si un fond studio/flou OU un filtre beauté/couleur est actif (pour l'inclure dans la vidéo).
@@ -1046,6 +1077,15 @@
       });
     }
   });
+  $('#rLumiereVirt').addEventListener('input', e=>{
+    cfg.lumiereVirt = +e.target.value; appliquer(); sauver();
+    if(cfg.lumiereVirt>0 && !selfie){
+      chargerMP().catch(()=>{
+        toast('Impossible de charger la lumière virtuelle (vérifie ta connexion internet).', 4000);
+        cfg.lumiereVirt = 0; appliquer(); sauver();
+      });
+    }
+  });
   $('#champTexte').addEventListener('input', e=>{ cfg.texte=e.target.value; texte.textContent=e.target.value||''; sauver(); });
   document.querySelectorAll('[data-police]').forEach(c=>c.addEventListener('click',()=>{ cfg.police=c.dataset.police; appliquer(); sauver(); }));
   document.querySelectorAll('[data-pos]').forEach(c=>c.addEventListener('click',()=>{ cfg.position=c.dataset.pos; recommencer(); appliquer(); sauver(); }));
@@ -1094,6 +1134,7 @@
     recommencer();
     if(cfg.fond && cfg.fond!=='aucun'){ changerFond(cfg.fond); }
     if(cfg.lissagePeau>0){ chargerFaceLandmarker().catch(()=>{ cfg.lissagePeau=0; appliquer(); sauver(); }); }
+    if(cfg.lumiereVirt>0 && !selfie){ chargerMP().catch(()=>{ cfg.lumiereVirt=0; appliquer(); sauver(); }); }
   });
 
   appliquer();
