@@ -294,7 +294,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 21</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 22</p>
   </div>
 
   <div id="accueil">
@@ -618,6 +618,7 @@
   // 'screen'/'multiply' avec ce masque directement en source ciblent donc naturellement la bonne
   // zone sans avoir besoin d'un masquage par transparence (vérifié par test le 2026-07-17).
   const assombFondTemp = document.createElement('canvas'); const aftctx = assombFondTemp.getContext('2d');
+  const lumiereTeintee = document.createElement('canvas'); const ltctx2 = lumiereTeintee.getContext('2d');
   function appliquerLumiereVirtuelle(ctxD, maskImage, w, h, intensite){
     if(intensite<=0 || !maskImage) return;
     const facteur = intensite/100;
@@ -637,13 +638,22 @@
     ctxD.globalCompositeOperation = 'multiply';
     ctxD.drawImage(assombFondTemp,0,0,w,h);
     ctxD.restore();
-    // 2) Éclaircir la personne (le fond reste inchangé grâce au masque noir à cet endroit).
-    // Plafond volontairement modéré : à combiner avec Luminosité/Chaleur déjà réglés, ça évite
-    // la surexposition/dominante rouge-orangé signalée par ElHadj le 2026-07-17.
+    // 2) Éclaircir la personne avec une lumière légèrement FROIDE (blanc lumière du jour, pas blanc
+    // pur) : une pièce éclairée à l'ampoule classique est déjà orangée, et un blanc pur ne fait
+    // qu'amplifier cette dominante orange en éclaircissant (constaté par ElHadj : rendu "tout rouge").
+    // Une lumière légèrement froide corrige/neutralise cette dominante, comme une vraie lampe LED
+    // "lumière du jour" utilisée pour la visio. Le fond reste inchangé (masque noir à cet endroit).
+    if(lumiereTeintee.width!==w || lumiereTeintee.height!==h){ lumiereTeintee.width=w; lumiereTeintee.height=h; }
+    ltctx2.clearRect(0,0,w,h);
+    ltctx2.drawImage(maskImage,0,0,w,h);
+    ltctx2.globalCompositeOperation = 'multiply';
+    ltctx2.fillStyle = '#dbe6ff';
+    ltctx2.fillRect(0,0,w,h);
+    ltctx2.globalCompositeOperation = 'source-over';
     ctxD.save();
     ctxD.globalCompositeOperation = 'screen';
     ctxD.globalAlpha = Math.min(0.55, facteur*0.5);
-    ctxD.drawImage(maskImage, 0, 0, w, h);
+    ctxD.drawImage(lumiereTeintee, 0, 0, w, h);
     ctxD.restore();
   }
 
