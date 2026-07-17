@@ -210,10 +210,11 @@
       <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Saturation (couleurs) : <span class="val" id="vSat"></span></label><input type="range" id="rSat" min="0" max="200" step="4"></div>
       <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Chaleur (froid ↔ chaud) : <span class="val" id="vChaleur"></span></label><input type="range" id="rChaleur" min="-50" max="50" step="2"></div>
       <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Adoucir (effet peau douce, toute l'image) : <span class="val" id="vAdoucir"></span></label><input type="range" id="rAdoucir" min="0" max="100" step="4"></div>
-      <div><label style="font-weight:400; font-size:14px;">Lissage de peau (visage uniquement, IA) : <span class="val" id="vLissage"></span></label><input type="range" id="rLissage" min="0" max="100" step="5">
+      <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Lissage de peau (visage uniquement, IA) : <span class="val" id="vLissage"></span></label><input type="range" id="rLissage" min="0" max="100" step="5">
         <p id="etatVisage" style="font-size:13px; margin:6px 0 0; color:#9ab;"></p>
       </div>
-      <p style="font-size:12.5px; color:#789; margin:10px 0 0;">💡 « Adoucir » = effet doux sur toute l'image. « Lissage de peau » détecte ton visage (IA gratuite, chargée à la 1ʳᵉ activation) et lisse seulement la peau, pas les yeux/la bouche. Regarde bien la caméra pour qu'il te détecte.</p>
+      <div><label style="font-weight:400; font-size:14px;">🌫️ Lissage plein écran (tout le corps, sans suivi du visage) : <span class="val" id="vLissageEcran"></span></label><input type="range" id="rLissageEcran" min="0" max="100" step="5"></div>
+      <p style="font-size:12.5px; color:#789; margin:10px 0 0;">💡 « Adoucir » = effet doux léger sur toute l'image. « Lissage de peau » suit ton visage par IA (peut se décoller un peu si tu bouges vite). « Lissage plein écran » applique le même rendu "peau lisse" à toute l'image (toi + le reste) sans suivi de visage : aucun décalage possible, mais ça lisse tout, pas juste la peau.</p>
       <div class="btn" id="btnResetFiltres" style="margin-top:12px; display:inline-flex;">↩️ Réinitialiser les filtres beauté/couleur</div>
     </div>
 
@@ -300,7 +301,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 31</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 32</p>
   </div>
 
   <div id="accueil">
@@ -338,7 +339,7 @@
 
   // ---- Config sauvegardée ----
   const CFG = 'prompteur_cfg_v2';
-  const defauts = { texte:"", taille:42, vitesse:55, ligne:17, lettre:5, bande:45, opacite:55, police:'dys', couleur:'#fff59d', position:'haut', repere:true, miroir:true, fond:'aucun', studio:'bleu', luminosite:100, contraste:100, saturation:100, chaleur:0, adoucir:0, lissagePeau:0, lumiereVirt:0, lumiereFlash:0 };
+  const defauts = { texte:"", taille:42, vitesse:55, ligne:17, lettre:5, bande:45, opacite:55, police:'dys', couleur:'#fff59d', position:'haut', repere:true, miroir:true, fond:'aucun', studio:'bleu', luminosite:100, contraste:100, saturation:100, chaleur:0, adoucir:0, lissagePeau:0, lumiereVirt:0, lumiereFlash:0, lissageEcran:0 };
   let cfg = Object.assign({}, defauts);
   try { const s = localStorage.getItem(CFG); if(s) cfg = Object.assign(cfg, JSON.parse(s)); } catch(e){}
   function sauver(){ try { localStorage.setItem(CFG, JSON.stringify(cfg)); } catch(e){} }
@@ -418,6 +419,7 @@
     maj('#rSat','#vSat',cfg.saturation,'%'); maj('#rChaleur','#vChaleur',cfg.chaleur,'');
     maj('#rAdoucir','#vAdoucir',cfg.adoucir,'%');
     maj('#rLissage','#vLissage',cfg.lissagePeau,'%');
+    maj('#rLissageEcran','#vLissageEcran',cfg.lissageEcran,'%');
     maj('#rLumiereVirt','#vLumiereVirt',cfg.lumiereVirt,'%');
     maj('#rLumiereFlash','#vLumiereFlash',cfg.lumiereFlash,'%');
     document.querySelectorAll('[data-police]').forEach(c=>c.classList.toggle('sel',c.dataset.police===cfg.police));
@@ -624,6 +626,36 @@
     return flouRendu;
   }
 
+  // ---- Lissage plein écran (2026-07-18, demande ElHadj) : même rendu "pore eraser" que Lissage de
+  // peau (2 passes de flou + léger glow), mais SANS masque ni suivi du visage — appliqué à toute
+  // l'image (corps entier compris). Comme il n'y a aucun contour à suivre, aucun décalage/décollement
+  // n'est possible par construction (contrairement au lissage basé sur les points du visage).
+  function appliquerLissageEcran(ctxD, w, h, intensite){
+    if(intensite<=0) return;
+    const f = intensite/100;
+    ctxD.save();
+    ctxD.setTransform(1,0,0,1,0,0); // ctxD.canvas est déjà dans son orientation finale (miroir déjà appliqué)
+    ctxD.globalCompositeOperation = 'source-over';
+    ctxD.globalAlpha = Math.min(0.45, f*0.4);
+    ctxD.drawImage(obtenirVersionFloue(ctxD.canvas, w, h, f*8), 0, 0, w, h);
+    ctxD.restore();
+
+    ctxD.save();
+    ctxD.setTransform(1,0,0,1,0,0);
+    ctxD.globalCompositeOperation = 'source-over';
+    ctxD.globalAlpha = Math.min(0.4, f*0.35);
+    const flouGrand = obtenirVersionFloue(ctxD.canvas, w, h, f*20);
+    ctxD.drawImage(flouGrand, 0, 0, w, h);
+    ctxD.restore();
+
+    ctxD.save();
+    ctxD.setTransform(1,0,0,1,0,0);
+    ctxD.globalCompositeOperation = 'lighter';
+    ctxD.globalAlpha = Math.min(0.18, f*0.16);
+    ctxD.drawImage(flouGrand, 0, 0, w, h);
+    ctxD.restore();
+  }
+
   // ---- Lumière virtuelle : éclaircit la personne ET assombrit un peu le fond (effet "mode portrait") ----
   // Le masque MediaPipe est en niveaux de gris (blanc=personne, noir=fond), pas un canal alpha ;
   // 'screen'/'multiply' avec ce masque directement en source ciblent donc naturellement la bonne
@@ -682,10 +714,11 @@
   // n'utilise PAS la luminosité du masque mais son canal ALPHA (via `source-in`) pour isoler la
   // personne. On réutilise exactement cette même technique éprouvée, garantie du bon côté.
   const masquePersonne = document.createElement('canvas'); const mpaCtx = masquePersonne.getContext('2d');
+  const masqueFond = document.createElement('canvas'); const mfCtx = masqueFond.getContext('2d');
   function appliquerLumiereFlash(ctxD, maskImage, w, h, intensite){
     if(intensite<=0 || !maskImage) return;
     const f = intensite/100;
-    if(masquePersonne.width!==w || masquePersonne.height!==h){ masquePersonne.width=w; masquePersonne.height=h; }
+    if(masquePersonne.width!==w || masquePersonne.height!==h){ masquePersonne.width=w; masquePersonne.height=h; masqueFond.width=w; masqueFond.height=h; }
     mpaCtx.clearRect(0,0,w,h);
     mpaCtx.drawImage(maskImage,0,0,w,h);
     mpaCtx.globalCompositeOperation = 'source-in';
@@ -693,7 +726,27 @@
     mpaCtx.fillRect(0,0,w,h);
     mpaCtx.globalCompositeOperation = 'source-over';
 
+    // Assombrit le fond proportionnellement à l'intensité (demande ElHadj : "l'arrière-plan devient
+    // un peu sombre... pour que l'effet ressorte bien", comme Lumière virtuelle). Masque du fond =
+    // l'inverse du masque personne (même technique alpha fiable, juste soustraite plutôt qu'ajoutée).
+    mfCtx.clearRect(0,0,w,h);
+    mfCtx.fillStyle = '#fff';
+    mfCtx.fillRect(0,0,w,h);
+    mfCtx.globalCompositeOperation = 'destination-out';
+    mfCtx.drawImage(masquePersonne,0,0,w,h);
+    mfCtx.globalCompositeOperation = 'source-over';
+
     if(lumiereTeintee.width!==w || lumiereTeintee.height!==h){ lumiereTeintee.width=w; lumiereTeintee.height=h; }
+    ltctx2.clearRect(0,0,w,h);
+    ltctx2.fillStyle = '#000';
+    ltctx2.globalAlpha = Math.min(0.55, f*0.5);
+    ltctx2.fillRect(0,0,w,h);
+    ltctx2.globalAlpha = 1;
+    ltctx2.globalCompositeOperation = 'destination-in';
+    ltctx2.drawImage(masqueFond,0,0,w,h);
+    ltctx2.globalCompositeOperation = 'source-over';
+    ctxD.drawImage(lumiereTeintee, 0, 0, w, h);
+
     ltctx2.clearRect(0,0,w,h);
     ltctx2.drawImage(ctxD.canvas,0,0,w,h);
     ltctx2.globalCompositeOperation = 'destination-in';
@@ -892,6 +945,7 @@
       ctx.drawImage(flouActuel, 0, 0, w, h);
       ctx.restore();
     }
+    if(cfg.lissageEcran > 0) appliquerLissageEcran(ctx, w, h, cfg.lissageEcran);
     ctx.restore();
     if(cfg.chaleur){
       ctx.save();
@@ -1085,7 +1139,7 @@
   function majChrono(){ if(!enReg) return; $('#btnRec').querySelector('.lbl').textContent = 'STOP '+fmtChrono(tempsEcoule()); }
   // Un filtre couleur/beauté "non neutre" doit aussi être gravé dans la vidéo enregistrée.
   function filtresActifs(){
-    return cfg.luminosite!==100 || cfg.contraste!==100 || cfg.saturation!==100 || cfg.chaleur!==0 || cfg.adoucir>0 || cfg.lissagePeau>0 || cfg.lumiereVirt>0 || cfg.lumiereFlash>0;
+    return cfg.luminosite!==100 || cfg.contraste!==100 || cfg.saturation!==100 || cfg.chaleur!==0 || cfg.adoucir>0 || cfg.lissagePeau>0 || cfg.lumiereVirt>0 || cfg.lumiereFlash>0 || cfg.lissageEcran>0;
   }
   // Vérifie qu'une piste micro utilisable existe avant d'enregistrer ; sinon relance la caméra pour
   // en récupérer une neuve. Corrige le bug "vidéo sans son" (constaté par ElHadj) : la piste micro
@@ -1263,6 +1317,9 @@
       });
     }
   });
+  $('#rLissageEcran').addEventListener('input', e=>{
+    cfg.lissageEcran = +e.target.value; appliquer(); sauver();
+  });
   $('#rLumiereVirt').addEventListener('input', e=>{
     cfg.lumiereVirt = +e.target.value; appliquer(); sauver();
     if(cfg.lumiereVirt>0 && !selfie){
@@ -1304,7 +1361,7 @@
   $('#btnResetFiltres').addEventListener('click', ()=>{
     cfg.luminosite = defauts.luminosite; cfg.contraste = defauts.contraste; cfg.saturation = defauts.saturation;
     cfg.chaleur = defauts.chaleur; cfg.adoucir = defauts.adoucir; cfg.lissagePeau = defauts.lissagePeau;
-    cfg.lumiereVirt = defauts.lumiereVirt; cfg.lumiereFlash = defauts.lumiereFlash;
+    cfg.lumiereVirt = defauts.lumiereVirt; cfg.lumiereFlash = defauts.lumiereFlash; cfg.lissageEcran = defauts.lissageEcran;
     appliquer(); sauver();
     toast('↩️ Filtres beauté/couleur réinitialisés.', 2000);
   });
