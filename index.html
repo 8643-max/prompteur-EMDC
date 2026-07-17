@@ -300,7 +300,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 26</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 27</p>
   </div>
 
   <div id="accueil">
@@ -943,22 +943,34 @@
   }
 
   // ---- Caméra ----
+  // Contraintes micro : echoCancellation/noiseSuppression/autoGainControl à `true` (comportement
+  // par défaut de getUserMedia) font passer iOS en mode traitement "appel vocal", ce qui écrase le
+  // niveau du micro (constaté par ElHadj : son "trop petit" même en parlant normalement). On les
+  // désactive pour un enregistrement plus proche du son brut du micro.
+  const CONTRAINTES_AUDIO = { echoCancellation:false, noiseSuppression:false, autoGainControl:false };
   async function demarrerCam(){
     if(flux){ flux.getTracks().forEach(t=>t.stop()); }
     try{
       flux = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: facing, width:{ideal:1280}, height:{ideal:720} },
-        audio: true
+        audio: CONTRAINTES_AUDIO
       });
     }catch(e){
-      // Micro refusé : retente sans audio
+      // Micro refusé avec ces contraintes precises : retente avec le micro par defaut, puis sans micro
       try{
         flux = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: facing, width:{ideal:1280}, height:{ideal:720} }
+          video: { facingMode: facing, width:{ideal:1280}, height:{ideal:720} },
+          audio: true
         });
-      }catch(e2){
-        alert("Impossible d'accéder à la caméra.\n\nVérifie que tu as autorisé la caméra dans le navigateur.\n\nDétail : " + e2.message);
-        return;
+      }catch(e1){
+        try{
+          flux = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: facing, width:{ideal:1280}, height:{ideal:720} }
+          });
+        }catch(e2){
+          alert("Impossible d'accéder à la caméra.\n\nVérifie que tu as autorisé la caméra dans le navigateur.\n\nDétail : " + e2.message);
+          return;
+        }
       }
     }
     cam.srcObject = flux;
@@ -1035,12 +1047,27 @@
   function filtresActifs(){
     return cfg.luminosite!==100 || cfg.contraste!==100 || cfg.saturation!==100 || cfg.chaleur!==0 || cfg.adoucir>0 || cfg.lissagePeau>0 || cfg.lumiereVirt>0 || cfg.lumiereFlash>0;
   }
+  // Vérifie qu'une piste micro utilisable existe avant d'enregistrer ; sinon relance la caméra pour
+  // en récupérer une neuve. Corrige le bug "vidéo sans son" (constaté par ElHadj) : la piste micro
+  // peut se couper silencieusement (appel, interruption iOS) sans que le code s'en aperçoive, et
+  // `sourceEnregistrement()` ignorait alors simplement l'audio sans prévenir.
+  async function assurerAudioVivant(){
+    let a = flux && flux.getAudioTracks()[0];
+    if(a && a.readyState === 'live' && !a.muted) return true;
+    try{ await demarrerCam(); }catch(e){}
+    a = flux && flux.getAudioTracks()[0];
+    return !!(a && a.readyState === 'live');
+  }
   // Choisit la source d'enregistrement : caméra brute si aucun effet (durée fiable),
   // canvas si un fond studio/flou OU un filtre beauté/couleur est actif (pour l'inclure dans la vidéo).
   function sourceEnregistrement(){
     if((modeFond !== 'aucun' && selfie) || filtresActifs()){
       try{
-        const cs = canvas.captureStream(30);
+        // Fréquence réduite quand 2 IA tournent en même temps par image (segmentation + visage) :
+        // ça surchargeait le thread principal sur téléphone et désynchronisait image/son
+        // (constaté par ElHadj : "bug au niveau de l'image").
+        const deuxIaEnMemeTemps = cfg.lissagePeau>0 && ((modeFond!=='aucun' && selfie) || cfg.lumiereVirt>0 || cfg.lumiereFlash>0);
+        const cs = canvas.captureStream(deuxIaEnMemeTemps ? 20 : 30);
         const a = flux.getAudioTracks()[0];
         if(a) cs.addTrack(a);
         return cs;
@@ -1063,10 +1090,15 @@
       }
     }catch(e){ pendingStop = false; }
   }
-  function toggleRec(){
+  async function toggleRec(){
     if(!flux){ alert("Démarre d'abord la caméra."); return; }
     if(enReg){ arreterEnregistrement(); return; }
     if(!window.MediaRecorder){ alert("Ton navigateur ne permet pas l'enregistrement. Utilise Safari/Chrome à jour."); return; }
+    const btnRecEl = $('#btnRec');
+    btnRecEl.querySelector('.lbl').textContent = '…';
+    const audioOk = await assurerAudioVivant();
+    btnRecEl.querySelector('.lbl').textContent = 'REC';
+    if(!audioOk){ toast('⚠️ Micro indisponible — la vidéo sera enregistrée sans son.', 3000); }
     const mime = typeSupporte(); morceaux = [];
     try{ mediaRecorder = new MediaRecorder(sourceEnregistrement(), mime?{mimeType:mime}:undefined); }
     catch(e){ alert("Enregistrement impossible : "+e.message); return; }
