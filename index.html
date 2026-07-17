@@ -294,7 +294,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 22</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 23</p>
   </div>
 
   <div id="accueil">
@@ -551,19 +551,23 @@
   // façon fiable sur Safari iOS (constaté sur l'iPhone d'ElHadj : aucun effet visible). Tout est
   // donc refait avec des techniques de composition Canvas2D classiques (globalCompositeOperation),
   // qui elles fonctionnent partout, plutôt qu'avec ctx.filter.
-  function appliquerLuminosite(ctxD, w, h, val){
+  function appliquerLuminosite(ctxD, w, h, val, src){
     if(val===100) return;
     ctxD.save();
     if(val>100){
-      ctxD.globalCompositeOperation = 'screen';
-      ctxD.globalAlpha = Math.min(0.85, (val-100)/60*0.8);
-      ctxD.fillStyle = '#ffffff';
+      // Gain PROPORTIONNEL (additif 'lighter' = re-dessiner l'image sur elle-même) plutot qu'un
+      // fondu vers du blanc pur : un fondu vers blanc ecrase les couleurs (elles convergent toutes
+      // vers blanc = perte de teinte -> rendu delave/brunatre sur peau mate). Le mode 'lighter'
+      // preserve les ratios R/G/B (verifie par test le 2026-07-17), comme un vrai gain d'exposition photo.
+      ctxD.globalCompositeOperation = 'lighter';
+      ctxD.globalAlpha = Math.min(0.9, (val-100)/100*0.8);
+      ctxD.drawImage(src, 0, 0, w, h);
     } else {
       ctxD.globalCompositeOperation = 'multiply';
       ctxD.globalAlpha = Math.min(0.85, (100-val)/40*0.8);
       ctxD.fillStyle = '#000000';
+      ctxD.fillRect(0,0,w,h);
     }
-    ctxD.fillRect(0,0,w,h);
     ctxD.restore();
   }
   function appliquerContraste(ctxD, w, h, val, src){
@@ -638,21 +642,22 @@
     ctxD.globalCompositeOperation = 'multiply';
     ctxD.drawImage(assombFondTemp,0,0,w,h);
     ctxD.restore();
-    // 2) Éclaircir la personne avec une lumière légèrement FROIDE (blanc lumière du jour, pas blanc
-    // pur) : une pièce éclairée à l'ampoule classique est déjà orangée, et un blanc pur ne fait
-    // qu'amplifier cette dominante orange en éclaircissant (constaté par ElHadj : rendu "tout rouge").
-    // Une lumière légèrement froide corrige/neutralise cette dominante, comme une vraie lampe LED
-    // "lumière du jour" utilisée pour la visio. Le fond reste inchangé (masque noir à cet endroit).
+    // 2) Éclaircir la personne : gain PROPORTIONNEL de ses propres pixels (additif 'lighter'),
+    // masqué par la segmentation, plutôt qu'un fondu vers une teinte fixe (#dbe6ff testé avant :
+    // toute teinte fixe mélangée par-dessus une vidéo déjà orangée par l'éclairage ambiant continue
+    // de virer orange/rouge, quel que soit Chaleur, car le fondu se fait sur les pixels DEJA teintés).
+    // Un gain 'lighter' n'ajoute jamais de couleur étrangère : il ré-additionne les pixels de la
+    // personne sur eux-mêmes, donc les ratios R/G/B (et la dominante de la pièce) restent identiques,
+    // juste plus lumineux — comme un vrai gain d'exposition photo (vérifié par test le 2026-07-17).
     if(lumiereTeintee.width!==w || lumiereTeintee.height!==h){ lumiereTeintee.width=w; lumiereTeintee.height=h; }
     ltctx2.clearRect(0,0,w,h);
-    ltctx2.drawImage(maskImage,0,0,w,h);
+    ltctx2.drawImage(ctxD.canvas,0,0,w,h);
     ltctx2.globalCompositeOperation = 'multiply';
-    ltctx2.fillStyle = '#dbe6ff';
-    ltctx2.fillRect(0,0,w,h);
+    ltctx2.drawImage(maskImage,0,0,w,h);
     ltctx2.globalCompositeOperation = 'source-over';
     ctxD.save();
-    ctxD.globalCompositeOperation = 'screen';
-    ctxD.globalAlpha = Math.min(0.55, facteur*0.5);
+    ctxD.globalCompositeOperation = 'lighter';
+    ctxD.globalAlpha = Math.min(0.85, facteur*0.75);
     ctxD.drawImage(lumiereTeintee, 0, 0, w, h);
     ctxD.restore();
   }
@@ -705,9 +710,29 @@
     dernierTempsVideoFL = cam.currentTime;
     try{
       const res = faceLandmarker.detectForVideo(cam, performance.now());
-      dernierLandmarks = (res.faceLandmarks && res.faceLandmarks.length) ? res.faceLandmarks[0] : null;
-    }catch(e){ dernierLandmarks = null; }
+      const brut = (res.faceLandmarks && res.faceLandmarks.length) ? res.faceLandmarks[0] : null;
+      dernierLandmarks = lisserLandmarks(brut);
+    }catch(e){ dernierLandmarks = null; landmarksLisses = null; }
     majEtatVisage(!!dernierLandmarks);
+  }
+  // Lissage temporel (moyenne mobile exponentielle) des points du visage : les coordonnées brutes du
+  // modèle tremblent legerement d'une frame a l'autre (bruit de detection), ce qui deforme le contour
+  // du masque de peau d'une frame sur l'autre et donne un rendu par "taches" au lieu d'un lissage
+  // homogene (constate par ElHadj : "plusieurs points comme si ça voulait flouter"). Une EMA stabilise
+  // la position des points sans ajouter de latence perceptible.
+  let landmarksLisses = null;
+  const EMA_ALPHA = 0.4;
+  function lisserLandmarks(brut){
+    if(!brut){ landmarksLisses = null; return null; }
+    if(!landmarksLisses || landmarksLisses.length !== brut.length){
+      landmarksLisses = brut.map(p=>({x:p.x, y:p.y}));
+      return landmarksLisses;
+    }
+    for(let i=0;i<brut.length;i++){
+      landmarksLisses[i].x += (brut[i].x - landmarksLisses[i].x) * EMA_ALPHA;
+      landmarksLisses[i].y += (brut[i].y - landmarksLisses[i].y) * EMA_ALPHA;
+    }
+    return landmarksLisses;
   }
 
   const workLisse = document.createElement('canvas'); const lctx = workLisse.getContext('2d');
@@ -759,14 +784,16 @@
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
     ctx.drawImage(src, 0, 0, w, h);
-    appliquerLuminosite(ctx, w, h, cfg.luminosite);
+    appliquerLuminosite(ctx, w, h, cfg.luminosite, src);
     appliquerContraste(ctx, w, h, cfg.contraste, src);
     appliquerSaturation(ctx, w, h, cfg.saturation, src);
     if(cfg.adoucir > 0){
       // Effet "peau douce" : une passe floutée mélangée par-dessus la passe nette (soft-focus global, pas une IA de peau).
+      // Intensité relevée (2026-07-17) : à faible alpha/rayon l'effet était noyé dans le grain/la
+      // compression déjà présents sur la vidéo caméra et restait invisible ("pas plus doux que sans").
       ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = Math.min(0.55, cfg.adoucir / 100 * 0.5);
-      ctx.drawImage(obtenirVersionFloue(src, w, h, cfg.adoucir/100*10), 0, 0, w, h);
+      ctx.globalAlpha = Math.min(0.75, cfg.adoucir / 100 * 0.7);
+      ctx.drawImage(obtenirVersionFloue(src, w, h, cfg.adoucir/100*16), 0, 0, w, h);
       ctx.globalAlpha = 1;
     }
     ctx.restore();
