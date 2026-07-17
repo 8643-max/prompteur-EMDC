@@ -300,7 +300,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 29</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 30</p>
   </div>
 
   <div id="accueil">
@@ -754,32 +754,15 @@
     dernierTempsVideoFL = cam.currentTime;
     try{
       const res = faceLandmarker.detectForVideo(cam, performance.now());
-      const brut = (res.faceLandmarks && res.faceLandmarks.length) ? res.faceLandmarks[0] : null;
-      dernierLandmarks = lisserLandmarks(brut);
-    }catch(e){ dernierLandmarks = null; landmarksLisses = null; }
+      dernierLandmarks = (res.faceLandmarks && res.faceLandmarks.length) ? res.faceLandmarks[0] : null;
+    }catch(e){ dernierLandmarks = null; }
     majEtatVisage(!!dernierLandmarks);
   }
-  // Lissage temporel (moyenne mobile exponentielle) des points du visage : les coordonnées brutes du
-  // modèle tremblent legerement d'une frame a l'autre (bruit de detection), ce qui deforme le contour
-  // du masque de peau d'une frame sur l'autre et donne un rendu par "taches" au lieu d'un lissage
-  // homogene (constate par ElHadj : "plusieurs points comme si ça voulait flouter"). Une EMA stabilise
-  // la position des points sans ajouter de latence perceptible.
-  let landmarksLisses = null;
-  // Relevé (2026-07-17) : à 0.4 le masque accusait un retard visible dès qu'ElHadj ou le téléphone
-  // bougeait ("il retarde avant de suivre le visage"). Plus réactif, quitte à un peu plus de tremblement.
-  const EMA_ALPHA = 0.7;
-  function lisserLandmarks(brut){
-    if(!brut){ landmarksLisses = null; return null; }
-    if(!landmarksLisses || landmarksLisses.length !== brut.length){
-      landmarksLisses = brut.map(p=>({x:p.x, y:p.y}));
-      return landmarksLisses;
-    }
-    for(let i=0;i<brut.length;i++){
-      landmarksLisses[i].x += (brut[i].x - landmarksLisses[i].x) * EMA_ALPHA;
-      landmarksLisses[i].y += (brut[i].y - landmarksLisses[i].y) * EMA_ALPHA;
-    }
-    return landmarksLisses;
-  }
+  // Lissage temporel retiré (2026-07-18) : même réglé plus réactif, il restait visible dès qu'ElHadj
+  // tournait la tête ("reste figé, suit pas le mouvement") — contrairement à Lumière virtuelle, qui
+  // recalcule un masque neuf à chaque image (aucun lissage/retard possible) et "colle" parfaitement
+  // (comparaison directe faite par ElHadj). On utilise maintenant les points bruts de chaque image,
+  // exactement pareil : plus aucun retard possible, quitte à un peu plus de tremblement.
 
   const workLisse = document.createElement('canvas'); const lctx = workLisse.getContext('2d');
   const maskPeau  = document.createElement('canvas'); const mpctx = maskPeau.getContext('2d');
