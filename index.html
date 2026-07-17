@@ -213,8 +213,8 @@
       <div style="margin-bottom:14px;"><label style="font-weight:400; font-size:14px;">Lissage de peau (visage uniquement, IA) : <span class="val" id="vLissage"></span></label><input type="range" id="rLissage" min="0" max="100" step="5">
         <p id="etatVisage" style="font-size:13px; margin:6px 0 0; color:#9ab;"></p>
       </div>
-      <div><label style="font-weight:400; font-size:14px;">🌫️ Lissage temporel (tout l'écran) : <span class="val" id="vLissageEcran"></span></label><input type="range" id="rLissageEcran" min="0" max="100" step="5"></div>
-      <p style="font-size:12.5px; color:#789; margin:10px 0 0;">💡 « Adoucir » = effet doux léger sur toute l'image. « Lissage de peau » suit ton visage par IA (peut se décoller un peu si tu bouges vite). « Lissage temporel » ne floute rien : il compare l'image actuelle aux précédentes et lisse ce qui change d'une image à l'autre (le grain de la caméra), sans toucher à la netteté des traits — rendu naturel garanti, sans suivi de visage. Léger effet de traînée possible si tu bouges vite.</p>
+      <div><label style="font-weight:400; font-size:14px;">🌫️ Lissage plein écran (tout le corps, sans bord) : <span class="val" id="vLissageEcran"></span></label><input type="range" id="rLissageEcran" min="0" max="100" step="5"></div>
+      <p style="font-size:12.5px; color:#789; margin:10px 0 0;">💡 « Adoucir » = effet doux léger sur toute l'image. « Lissage de peau » suit ton visage par IA (bords du masque possiblement visibles si tu bouges vite). « Lissage plein écran » applique le même rendu "peau lisse" à TOUTE l'image (toi + le reste), sans masque ni suivi de visage : aucun bord possible, jamais, puisqu'il n'y a rien à délimiter.</p>
       <div class="btn" id="btnResetFiltres" style="margin-top:12px; display:inline-flex;">↩️ Réinitialiser les filtres beauté/couleur</div>
     </div>
 
@@ -301,7 +301,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 33</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 34</p>
   </div>
 
   <div id="accueil">
@@ -626,34 +626,34 @@
     return flouRendu;
   }
 
-  // ---- Lissage TEMPOREL plein écran (2026-07-18, précisé par ElHadj) : PAS un flou spatial (ça
-  // floute une seule image). Ici on mélange chaque image avec un "souvenir" des images précédentes
-  // (moyenne mobile dans le TEMPS) : le grain/bruit de la caméra, qui change à chaque image, se
-  // moyenne et disparaît, alors que ce qui reste stable (les traits, la netteté du visage) reste
-  // intact — d'où un rendu "propre" naturel plutôt qu'un flou. Contrepartie honnête : en cas de
-  // mouvement rapide, un léger effet de traînée peut apparaître (inévitable avec cette technique).
-  let bufferTemporel = null, btCtx = null;
+  // ---- Lissage plein écran (2026-07-18, clarifié par ElHadj — malentendu sur "temporel" : il
+  // parlait en fait du masque de peau à bords visibles). Le vrai besoin : un lissage qui couvre TOUT
+  // l'écran (corps entier), sans aucun masque ni suivi de visage — donc structurellement aucun bord,
+  // aucune limite de zone, jamais visible, puisqu'il n'y a rien à délimiter. Même rendu "peau lisse"
+  // (2 passes de flou + léger glow) que Lissage de peau, en s'appliquant partout.
   function appliquerLissageEcran(ctxD, w, h, intensite){
-    if(intensite<=0){ bufferTemporel = null; return; }
-    if(!bufferTemporel || bufferTemporel.width!==w || bufferTemporel.height!==h){
-      bufferTemporel = document.createElement('canvas');
-      bufferTemporel.width = w; bufferTemporel.height = h;
-      btCtx = bufferTemporel.getContext('2d');
-      btCtx.drawImage(ctxD.canvas, 0, 0, w, h);
-    }
+    if(intensite<=0) return;
     const f = intensite/100;
-    const poidsNouvelleImage = Math.max(0.1, 1 - f*0.85); // + intensite haute, + on retient les images precedentes
-    btCtx.save();
-    btCtx.globalCompositeOperation = 'source-over';
-    btCtx.globalAlpha = poidsNouvelleImage;
-    btCtx.drawImage(ctxD.canvas, 0, 0, w, h);
-    btCtx.restore();
-
     ctxD.save();
     ctxD.setTransform(1,0,0,1,0,0); // ctxD.canvas est déjà dans son orientation finale (miroir déjà appliqué)
     ctxD.globalCompositeOperation = 'source-over';
-    ctxD.globalAlpha = 1;
-    ctxD.drawImage(bufferTemporel, 0, 0, w, h);
+    ctxD.globalAlpha = Math.min(0.45, f*0.4);
+    ctxD.drawImage(obtenirVersionFloue(ctxD.canvas, w, h, f*8), 0, 0, w, h);
+    ctxD.restore();
+
+    ctxD.save();
+    ctxD.setTransform(1,0,0,1,0,0);
+    ctxD.globalCompositeOperation = 'source-over';
+    ctxD.globalAlpha = Math.min(0.4, f*0.35);
+    const flouGrand = obtenirVersionFloue(ctxD.canvas, w, h, f*20);
+    ctxD.drawImage(flouGrand, 0, 0, w, h);
+    ctxD.restore();
+
+    ctxD.save();
+    ctxD.setTransform(1,0,0,1,0,0);
+    ctxD.globalCompositeOperation = 'lighter';
+    ctxD.globalAlpha = Math.min(0.18, f*0.16);
+    ctxD.drawImage(flouGrand, 0, 0, w, h);
     ctxD.restore();
   }
 
