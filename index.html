@@ -300,7 +300,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 30</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 31</p>
   </div>
 
   <div id="accueil">
@@ -768,6 +768,7 @@
   const maskPeau  = document.createElement('canvas'); const mpctx = maskPeau.getContext('2d');
   const flouPeau  = document.createElement('canvas'); const fpctx = flouPeau.getContext('2d');
   const flouTeint = document.createElement('canvas'); const fpTeintCtx = flouTeint.getContext('2d');
+  const maskPeauDouce = document.createElement('canvas'); const mpdCtx = maskPeauDouce.getContext('2d');
 
   function traceContourVisage(ctxM, indices, pts, w, h){
     ctxM.beginPath();
@@ -780,20 +781,29 @@
   }
 
   // Le contour FACE_OVAL de MediaPipe s'arrête souvent avant la vraie racine des cheveux (constaté
-  // par ElHadj : une bande de front pas lissée, visible en haut du masque). On étire le haut du
-  // masque vers le haut (les points du bas/menton ne bougent pas) pour couvrir tout le front.
+  // par ElHadj : une bande de front pas lissée, visible en haut du masque). On étire vers le front
+  // les points proches du sommet du crâne (index 10 dans FL_FACE_OVAL, position 0 du tableau).
+  // Corrigé (2026-07-18) : la 1ʳᵉ version comparait les Y à l'écran, ce qui casse dès que la tête
+  // s'incline (le masque se décolle/déborde sur le côté, constaté par ElHadj tête basculée en
+  // arrière). On étire maintenant le long de la vraie direction menton→front du visage détecté
+  // (vecteur calculé à partir des points 152 et 10), donc ça reste juste quelle que soit l'inclinaison
+  // de la tête — et on pondère chaque point par sa position dans la boucle FL_FACE_OVAL (proche de
+  // l'index 0 = front = étiré fort, proche du milieu = menton = pas étiré), pas par sa position écran.
   function traceContourVisageFront(ctxM, indices, pts, w, h){
-    const ptsPix = indices.map(idx=>pts[idx]).filter(Boolean).map(p=>({x:p.x*w, y:p.y*h}));
-    if(!ptsPix.length){ ctxM.beginPath(); return; }
-    let minY=Infinity, maxY=-Infinity, cy=0;
-    ptsPix.forEach(p=>{ if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; cy+=p.y; });
-    cy /= ptsPix.length;
-    const extension = (maxY-minY) * 0.28;
+    const front = pts[10], menton = pts[152];
+    if(!front || !menton){ traceContourVisage(ctxM, indices, pts, w, h); return; }
+    let dx = front.x*w - menton.x*w, dy = front.y*h - menton.y*h;
+    const norme = Math.hypot(dx,dy) || 1;
+    dx/=norme; dy/=norme;
+    const extensionMax = norme * 0.28;
+    const n = indices.length;
     ctxM.beginPath();
-    ptsPix.forEach((p,i)=>{
-      let y = p.y;
-      if(y < cy && (cy-minY) > 0){ y -= extension * ((cy-y)/(cy-minY)); }
-      if(i===0) ctxM.moveTo(p.x,y); else ctxM.lineTo(p.x,y);
+    indices.forEach((idx,i)=>{
+      const p = pts[idx]; if(!p) return;
+      const poids = Math.max(0, (Math.cos(2*Math.PI*i/n) + 1) / 2); // 1 au front (i=0), 0 au menton (i=n/2)
+      const x = p.x*w + dx*extensionMax*poids;
+      const y = p.y*h + dy*extensionMax*poids;
+      if(i===0) ctxM.moveTo(x,y); else ctxM.lineTo(x,y);
     });
     ctxM.closePath();
   }
@@ -802,7 +812,7 @@
   function appliquerLissagePeau(source, w, h){
     if(!dernierLandmarks || cfg.lissagePeau<=0) return source;
     if(workLisse.width!==w || workLisse.height!==h){
-      workLisse.width=w; workLisse.height=h; maskPeau.width=w; maskPeau.height=h; flouPeau.width=w; flouPeau.height=h; flouTeint.width=w; flouTeint.height=h;
+      workLisse.width=w; workLisse.height=h; maskPeau.width=w; maskPeau.height=h; flouPeau.width=w; flouPeau.height=h; flouTeint.width=w; flouTeint.height=h; maskPeauDouce.width=w; maskPeauDouce.height=h;
     }
     const pts = dernierLandmarks;
     mpctx.clearRect(0,0,w,h);
@@ -814,6 +824,14 @@
     traceContourVisage(mpctx, FL_LEVRES, pts, w, h); mpctx.fill();
     mpctx.globalCompositeOperation = 'source-over';
 
+    // Bords du masque adoucis (2026-07-18, demande ElHadj : "je veux qu'il fasse un avec ma peau,
+    // pas juste une couche en plus") : un masque à bord net crée une frontière visible entre peau
+    // lissée et peau normale, ce qui se voit comme une "pièce rapportée" plutôt qu'un rendu naturel.
+    // On floute légèrement le masque lui-même avant de l'utiliser : le lissage se fond alors
+    // progressivement dans la peau environnante, sans ligne de démarcation.
+    mpdCtx.clearRect(0,0,w,h);
+    mpdCtx.drawImage(obtenirVersionFloue(maskPeau, w, h, 3), 0, 0);
+
     // Rendu "pore eraser" (2026-07-17, demande ElHadj avec référence TikTok) : deux passes plutôt
     // qu'une. Une passe à rayon MOYEN gomme la texture/les pores (comme avant). Une 2e passe à
     // GRAND rayon, mélangée plus fort mais très floue, unifie le TEINT (taches, rougeurs, zones plus
@@ -823,13 +841,13 @@
     fpctx.clearRect(0,0,w,h);
     fpctx.drawImage(obtenirVersionFloue(source, w, h, cfg.lissagePeau/100*9), 0, 0);
     fpctx.globalCompositeOperation = 'destination-in';
-    fpctx.drawImage(maskPeau,0,0);
+    fpctx.drawImage(maskPeauDouce,0,0);
     fpctx.globalCompositeOperation = 'source-over';
 
     fpTeintCtx.clearRect(0,0,w,h);
     fpTeintCtx.drawImage(obtenirVersionFloue(source, w, h, cfg.lissagePeau/100*24), 0, 0);
     fpTeintCtx.globalCompositeOperation = 'destination-in';
-    fpTeintCtx.drawImage(maskPeau,0,0);
+    fpTeintCtx.drawImage(maskPeauDouce,0,0);
     fpTeintCtx.globalCompositeOperation = 'source-over';
 
     lctx.clearRect(0,0,w,h);
