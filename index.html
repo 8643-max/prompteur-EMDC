@@ -29,6 +29,7 @@
     background: #000; color: #fff; overflow: hidden;
     font-family: system-ui, -apple-system, sans-serif;
     user-select: none; -webkit-user-select: none;
+    overscroll-behavior: none; /* empeche le "tirer vers le bas" de Safari de recharger toute la page (efface l'enregistrement en cours) */
   }
 
   /* Vidéo source (cachée) : sert de source à la caméra et à l'IA */
@@ -98,7 +99,7 @@
   .lbl { font-size: 13px; }
 
   /* ---------- PANNEAU RÉGLAGES ---------- */
-  #reglages { position: fixed; inset: 0; z-index: 40; background: rgba(10,10,14,.96); padding: 20px; overflow-y: auto; display: none; }
+  #reglages { position: fixed; inset: 0; z-index: 40; background: rgba(10,10,14,.96); padding: 20px; overflow-y: auto; overscroll-behavior: contain; display: none; }
   #reglages.ouvert { display: block; }
   #reglages h2 { margin: 0 0 4px; font-size: 22px; }
   #reglages p.sous { margin: 0 0 18px; color: #9aa; font-size: 14px; }
@@ -305,7 +306,7 @@
       <b>Astuce placement :</b> pose le téléphone en portrait, à hauteur des yeux. Regarde l'objectif (en haut), pas le bas de l'écran.<br><br>
       <b>Commandes :</b> touche l'écran = <b>Lire / Pause</b>. Glisse le doigt haut/bas = avancer/reculer le texte.
     </div>
-    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 35</p>
+    <p style="text-align:center; color:#567; font-size:12px; margin-top:16px;">Mon Prompteur — Version 36</p>
   </div>
 
   <div id="accueil">
@@ -1106,26 +1107,58 @@
     }catch(e){ return blob; }
   }
 
+  // Liste les boxes MP4 de premier niveau entre [debut,fin) en lisant leur taille declaree (pas en
+  // devinant) : on AVANCE de `size` a chaque box plutot que d'inspecter byte par byte a l'interieur.
+  function listerBoxesMp4(bytes, view, debut, fin){
+    const boxes = [];
+    let pos = debut;
+    while(pos + 8 <= fin){
+      let size = view.getUint32(pos, false);
+      const type = String.fromCharCode(bytes[pos+4], bytes[pos+5], bytes[pos+6], bytes[pos+7]);
+      let headerSize = 8;
+      if(size === 1){
+        if(pos + 16 > fin) break;
+        const hi = view.getUint32(pos+8, false), lo = view.getUint32(pos+12, false);
+        size = hi * 4294967296 + lo;
+        headerSize = 16;
+      } else if(size === 0){
+        size = fin - pos;
+      }
+      if(size < headerSize) break; // taille invalide -> arreter plutot que boucler indefiniment
+      boxes.push({ type, start: pos, contentStart: pos + headerSize, end: pos + size });
+      pos += size;
+    }
+    return boxes;
+  }
+  // Corrige la duree dans le mvhd/moov d'un MP4 genere par MediaRecorder (souvent absente/fausse).
+  // IMPORTANT (2026-07-20, bug ElHadj : "video bug"/duree "impossible" type annee 1970) : la version
+  // precedente cherchait la sequence d'octets "mvhd" n'importe ou dans TOUT le fichier — si ce motif
+  // apparaissait PAR HASARD dans les donnees video/audio compressees (mdat, avant le vrai moov), le
+  // code corrompait ces octets en croyant avoir trouve l'en-tete de duree. Fix : lire la vraie
+  // structure de boxes MP4 (taille declaree de chaque box) pour aller precisement dans moov -> mvhd,
+  // sans jamais inspecter le contenu de mdat.
   async function fixerDureeMp4(blob, dureeMs){
     if(!blob || !dureeMs) return blob;
     try{
       const buf = await blob.arrayBuffer();
       const bytes = new Uint8Array(buf);
       const view = new DataView(buf);
-      for(let i=4; i<bytes.length-40; i++){
-        if(bytes[i]===0x6d&&bytes[i+1]===0x76&&bytes[i+2]===0x68&&bytes[i+3]===0x64){
-          const ver = bytes[i+4];
-          if(ver===0){
-            const ts = view.getUint32(i+16,false);
-            if(ts>0) view.setUint32(i+20, Math.round((dureeMs/1000)*ts), false);
-          } else if(ver===1){
-            const ts = view.getUint32(i+24,false);
-            if(ts>0){
-              view.setUint32(i+28,0,false);
-              view.setUint32(i+32, Math.round((dureeMs/1000)*ts), false);
-            }
-          }
-          break;
+      const racine = listerBoxesMp4(bytes, view, 0, bytes.length);
+      const moov = racine.find(b => b.type === 'moov');
+      if(!moov) return blob;
+      const enfants = listerBoxesMp4(bytes, view, moov.contentStart, moov.end);
+      const mvhd = enfants.find(b => b.type === 'mvhd');
+      if(!mvhd) return blob;
+      const i = mvhd.contentStart - 4; // position du 'm' de "mvhd", comme attendu par le calcul d'offsets ci-dessous
+      const ver = bytes[i+4];
+      if(ver===0){
+        const ts = view.getUint32(i+16,false);
+        if(ts>0) view.setUint32(i+20, Math.round((dureeMs/1000)*ts), false);
+      } else if(ver===1){
+        const ts = view.getUint32(i+24,false);
+        if(ts>0){
+          view.setUint32(i+28,0,false);
+          view.setUint32(i+32, Math.round((dureeMs/1000)*ts), false);
         }
       }
       return new Blob([buf],{type:blob.type});
