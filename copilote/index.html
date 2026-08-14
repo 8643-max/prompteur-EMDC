@@ -5,8 +5,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>EMDC Copilote d'Entreprise</title>
-<!-- Google Identity Services — auto-fill name/email/photo when deployed with a Google Client ID -->
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+<!-- Google Identity Services : activé uniquement si GOOGLE_CLIENT_ID est configuré en production -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -433,9 +432,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
       <span class="badge-demo">Espace de travail IA</span>
     </div>
 
-    <!-- Étape 1 : connexion Google -->
-    <!-- GSI init — fonctionne quand le Client ID Google Cloud est configuré -->
-    <div id="g_id_onload" data-client_id="VOTRE_GOOGLE_CLIENT_ID" data-callback="handleGoogleCredential" data-ux_mode="popup" data-auto_select="false"></div>
+    <!-- Étape 1 : connexion -->
     <div id="login-step1" class="login-step">
       <p class="login-title" id="login-title-text">Connectez-vous à votre espace de travail</p>
       <p id="login-subtitle-text" style="display:none;font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:16px;line-height:1.6">Créez votre profil pour sauvegarder vos conversations et recevoir des réponses adaptées.</p>
@@ -574,14 +571,17 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
         <div style="flex:1;min-width:0"><div class="upload-preview-name" id="upi-name">fichier.pdf</div><div class="upload-preview-size" id="upi-size">—</div></div>
         <button class="upload-preview-remove" onclick="removeFile()">✕</button>
       </div>
-      <input type="file" id="file-input" style="display:none" accept=".pdf,.png,.jpg,.jpeg,.docx,.doc,.pptx,.ppt,.xlsx,.xls" onchange="onFileSelect(event)"/>
       <div class="input-bar">
         <div class="mode-switcher">
           <button class="mode-btn standard active" id="mode-standard" onclick="setMode('standard')"><span class="mode-dot"></span><span class="mode-label"> Mode Standard </span><span class="mode-cost">Gratuit</span></button>
           <button class="mode-btn vision" id="mode-vision" onclick="setMode('vision')"><span class="mode-dot"></span><span class="mode-label"> ⚡ Vision Avancée </span><span class="mode-cost">1 jeton</span></button>
         </div>
         <div class="input-row">
-          <label class="btn-icon" for="file-input" title="Joindre un fichier" style="cursor:pointer">📎</label>
+          <!-- Bouton fichier : input transparent superposé, fiable sur iOS Safari -->
+          <div style="position:relative;width:38px;height:38px;flex-shrink:0">
+            <div class="btn-icon" style="position:absolute;inset:0;pointer-events:none">📎</div>
+            <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.docx,.doc,.pptx,.ppt,.xlsx,.xls" onchange="onFileSelect(event)" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0" title="Joindre un fichier"/>
+          </div>
           <textarea id="chat-input" rows="1" placeholder="Posez une question..." onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
           <button class="btn-send" onclick="sendMessage()">🚀</button>
         </div>
@@ -1923,24 +1923,15 @@ function handleGoogleCredential(response) {
   } catch(e) { showGoogleEmailInput(); }
 }
 function startGoogleAuth() {
-  // Vérifier si un vrai Client ID est configuré (pas le placeholder)
-  const gDiv = document.getElementById('g_id_onload');
-  const clientId = gDiv?.dataset?.clientId || '';
-  const hasRealClientId = clientId && clientId !== 'VOTRE_GOOGLE_CLIENT_ID';
-
-  // Si GSI chargé ET vrai Client ID → OAuth réel
-  if (hasRealClientId && window.google?.accounts?.id) {
-    google.accounts.id.prompt(notification => {
-      if (notification.isNotDisplayed() || notification.isSkippedMoment()) showGoogleEmailInput();
-    });
-    return;
-  }
-  // Fallback : saisie manuelle de l'email
+  // Sans vrai Client ID Google Cloud → ouvre directement le formulaire de profil
   showGoogleEmailInput();
 }
 function showGoogleEmailInput() {
   document.getElementById('google-email-wrap').style.display='';
-  document.getElementById('google-email-inp').focus();
+  setTimeout(() => {
+    const inp = document.getElementById('google-email-inp');
+    if (inp) inp.focus();
+  }, 100);
 }
 function continueAsGuest() {
   S._guestMode = true; closeLoginModal();
