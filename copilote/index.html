@@ -770,6 +770,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
       <div class="sgroup">
         <div class="sgroup-title">Workflow IA (n8n)</div>
         <div class="sfield"><label>URL du webhook</label><input class="sinput" id="s-webhook" placeholder="https://..." oninput="savePref('webhookUrl',this.value)"/></div>
+        <div class="sfield"><label>Header d'auth (optionnel)</label><input class="sinput" id="s-webhook-header-name" placeholder="X-Auth-Header" style="margin-bottom:5px" oninput="savePref('webhookHeaderName',this.value)"/><input class="sinput" id="s-webhook-header-value" type="password" placeholder="valeur secrète..." oninput="savePref('webhookHeaderValue',this.value)"/><small style="color:var(--text-muted);font-size:10px;margin-top:3px;display:block">Laisser vide si n8n n'a pas d'auth sur le webhook</small></div>
         <div class="srow"><div class="srow-left"><div class="srow-label">Statut</div></div><span class="s-badge-ok" id="s-n8n-status">Connecté</span></div>
         <button class="sbtn" onclick="testWebhook()" style="margin-top:8px;width:100%">🔗 Tester la connexion</button>
       </div>
@@ -1477,9 +1478,11 @@ async function sendMessage() {
     try {
       const ctrl = new AbortController();
       const tid = setTimeout(() => ctrl.abort(), 12000);
+      const whHeaders = { 'Content-Type': 'application/json' };
+      if (prefs.webhookHeaderName && prefs.webhookHeaderValue) whHeaders[prefs.webhookHeaderName] = prefs.webhookHeaderValue;
       const r = await fetch(webhookUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: whHeaders,
         body: JSON.stringify({
           action: 'chat',
           message: text,
@@ -1585,6 +1588,8 @@ function openSettings(tab='general') {
   const sn=document.getElementById('s-name'); if(sn) sn.value=p.displayName||S.user?.name||'';
   const se=document.getElementById('s-email'); if(se) se.value=S.user?.email||'';
   const sw=document.getElementById('s-webhook'); if(sw) sw.value=p.webhookUrl||'';
+  const swhn=document.getElementById('s-webhook-header-name'); if(swhn) swhn.value=p.webhookHeaderName||'';
+  const swhv=document.getElementById('s-webhook-header-value'); if(swhv) swhv.value=p.webhookHeaderValue||'';
   const ssu=document.getElementById('s-supa-url'); if(ssu) ssu.value=p.supaUrl||'';
   const ssk=document.getElementById('s-supa-key'); if(ssk) ssk.value=p.supaKey||'';
   const sstr=document.getElementById('s-stripe'); if(sstr) sstr.value=p.stripeUrl||'';
@@ -1640,9 +1645,11 @@ async function connectService(name, triggerEl) {
     return;
   }
   try {
+    const csHdrs = {'Content-Type':'application/json'};
+    if(prefs.webhookHeaderName && prefs.webhookHeaderValue) csHdrs[prefs.webhookHeaderName]=prefs.webhookHeaderValue;
     const resp = await fetch(webhookUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: csHdrs,
       body: JSON.stringify({ action: 'get_connector_url', service: name, lang: S.lang || 'fr' })
     });
     const data = await resp.json();
@@ -1836,12 +1843,23 @@ function exportHistory_buildHtml(sessions) {
   body += '</body></html>';
   return body;
 }
-function testWebhook() {
+async function testWebhook() {
   const url=document.getElementById('s-webhook')?.value;
   if(!url){alert('Entrez d\'abord l\'URL du webhook.');return;}
   const b=document.getElementById('s-n8n-status');
   if(b){b.textContent='Test en cours...';b.className='s-badge-off';}
-  setTimeout(()=>{ if(b){b.textContent='Connecté';b.className='s-badge-ok';} },1500);
+  try {
+    const p = DB.prefs();
+    const hdrs = {'Content-Type':'application/json'};
+    if(p.webhookHeaderName && p.webhookHeaderValue) hdrs[p.webhookHeaderName]=p.webhookHeaderValue;
+    const ctrl = new AbortController();
+    const tid = setTimeout(()=>ctrl.abort(), 8000);
+    const r = await fetch(url, {method:'POST', headers:hdrs, body:JSON.stringify({action:'ping', lang:'fr'}), signal:ctrl.signal});
+    clearTimeout(tid);
+    if(b){b.textContent = r.ok ? 'Connecté ✓' : 'Erreur '+r.status; b.className = r.ok ? 's-badge-ok' : 's-badge-off';}
+  } catch(e) {
+    if(b){b.textContent = e.name==='AbortError' ? 'Timeout' : 'Erreur réseau'; b.className='s-badge-off';}
+  }
 }
 function connectDrive() { document.getElementById('s-drive-email').textContent='Connexion via popup OAuth (production)'; }
 function togglePw(id, btn) {
