@@ -581,7 +581,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
           <button class="mode-btn vision" id="mode-vision" onclick="setMode('vision')"><span class="mode-dot"></span><span class="mode-label"> ⚡ Vision Avancée </span><span class="mode-cost">1 jeton</span></button>
         </div>
         <div class="input-row">
-          <button class="btn-icon" onclick="toggleUpload()" title="Joindre un fichier">📎</button>
+          <label class="btn-icon" for="file-input" title="Joindre un fichier" style="cursor:pointer">📎</label>
           <textarea id="chat-input" rows="1" placeholder="Posez une question..." onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
           <button class="btn-send" onclick="sendMessage()">🚀</button>
         </div>
