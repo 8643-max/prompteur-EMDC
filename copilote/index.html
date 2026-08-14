@@ -361,6 +361,16 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
   .badge-workspace{display:none}
   .token-label{display:none}
   .btn-recharge{display:none}
+  /* Input bar mobile */
+  .input-bar{padding:8px 10px 12px}
+  .mode-switcher{gap:4px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+  .mode-switcher::-webkit-scrollbar{display:none}
+  .mode-btn{padding:4px 8px;font-size:10px;white-space:nowrap}
+  .mode-cost{display:none}
+  .input-row{gap:6px}
+  .btn-icon{width:36px;height:36px;font-size:15px;flex-shrink:0}
+  .btn-send{width:36px;height:36px;font-size:15px;flex-shrink:0}
+  #chat-input{font-size:16px;min-height:36px} /* 16px évite le zoom auto iOS */
 }
 </style>
 
@@ -1913,8 +1923,13 @@ function handleGoogleCredential(response) {
   } catch(e) { showGoogleEmailInput(); }
 }
 function startGoogleAuth() {
-  // Si Google Identity Services est chargé (app déployée avec Client ID configuré)
-  if (window.google?.accounts?.id) {
+  // Vérifier si un vrai Client ID est configuré (pas le placeholder)
+  const gDiv = document.getElementById('g_id_onload');
+  const clientId = gDiv?.dataset?.clientId || '';
+  const hasRealClientId = clientId && clientId !== 'VOTRE_GOOGLE_CLIENT_ID';
+
+  // Si GSI chargé ET vrai Client ID → OAuth réel
+  if (hasRealClientId && window.google?.accounts?.id) {
     google.accounts.id.prompt(notification => {
       if (notification.isNotDisplayed() || notification.isSkippedMoment()) showGoogleEmailInput();
     });
