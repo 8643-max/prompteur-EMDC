@@ -2290,9 +2290,15 @@ async function submitSupaAuth() {
     if (_supaMode === 'signup') {
       const { data, error } = await _supa.auth.signUp({ email, password: pass, options: { data: { nom: name } } });
       if (error) throw error;
-      await _supa.from('users').upsert({ email, nom: name, jetons: 10 }, { onConflict: 'email' });
-      if (data.user) { await afterSupaAuth(data.user); }
-      else { if (btn) { btn.disabled = false; btn.textContent = 'Créer mon compte →'; } showSupaError('✅ Vérifiez votre email pour confirmer votre compte.'); }
+      await _supa.from('users').upsert({ email, nom: name }, { onConflict: 'email' }).catch(() => {});
+      if (data.user && data.session) {
+        // Email confirmation désactivée → connexion directe
+        await afterSupaAuth(data.user);
+      } else if (data.user) {
+        // Email confirmation activée → demander de vérifier l'email
+        if (btn) { btn.disabled = false; btn.textContent = 'Créer mon compte →'; }
+        showSupaError('✅ Compte créé ! Vérifiez votre boîte email, confirmez, puis connectez-vous ici.');
+      }
     } else {
       const { data, error } = await _supa.auth.signInWithPassword({ email, password: pass });
       if (error) throw error;
@@ -2306,25 +2312,20 @@ async function submitSupaAuth() {
 }
 
 async function afterSupaAuth(user) {
-  let tokens = 10, nom = '';
+  let nom = '';
   try {
-    const { data } = await _supa.from('users').select('nom,jetons').eq('email', user.email).maybeSingle();
-    if (data) { tokens = data.jetons ?? 10; nom = data.nom || ''; }
+    const { data } = await _supa.from('users').select('nom').eq('email', user.email).maybeSingle();
+    if (data) { nom = data.nom || ''; }
     else {
       nom = user.user_metadata?.nom || user.email.split('@')[0];
-      await _supa.from('users').insert({ email: user.email, nom, jetons: 10 }).catch(() => {});
+      await _supa.from('users').insert({ email: user.email, nom }).catch(() => {});
     }
   } catch(e) {}
   nom = nom || user.user_metadata?.nom || user.email.split('@')[0];
-  S._supaTokens = tokens;
   launchApp(nom, user.email, DB.prefs().profilePhoto || '', DB.prefs().lang || 'fr');
 }
 
 async function refreshSupaTokens() {
-  if (!_supa || !S.user?.email) return;
-  try {
-    const { data } = await _supa.from('users').select('jetons').eq('email', S.user.email).maybeSingle();
-    if (data && typeof data.jetons === 'number') { S.tokens = data.jetons; updateTokenUI(); }
-  } catch(e) {}
+  // Tokens gérés localement — pas de colonne jetons dans users pour l'instant
 }
 </script>
