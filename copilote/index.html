@@ -1903,7 +1903,6 @@ async function changePassword() {
     showToast('✅ Mot de passe mis à jour.',2500);
     ['s-pw-old','s-pw-new','s-pw-confirm'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   } catch(e){showToast('⚠️ '+(e.message||'Erreur'),2800);}
-};
 }
 function logoutAll() { if(confirm('Déconnecter toutes les sessions ?')) { doLogout(); closeSettings(); } }
 function buyTokens(n) {
