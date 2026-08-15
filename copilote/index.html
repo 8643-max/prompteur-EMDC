@@ -454,8 +454,8 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
       <div id="supa-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px;text-align:center;padding:6px;background:var(--red-dim);border-radius:6px"></div>
       <button class="btn-login" id="supa-submit-btn" onclick="submitSupaAuth()">Se connecter →</button>
       <p class="login-note">🔒 Connexion sécurisée — 10 jetons offerts à l'inscription</p>
-      <div id="guest-continue" style="display:none;text-align:center;margin-top:12px">
-        <button onclick="continueAsGuest()" style="background:none;border:none;color:var(--text-muted);font-size:12px;cursor:pointer;text-decoration:underline;padding:0">Continuer sans compte →</button>
+      <div style="text-align:center;margin-top:12px">
+        <button onclick="continueAsGuest()" style="background:none;border:none;color:var(--text-muted);font-size:12px;cursor:pointer;text-decoration:underline;padding:0">Continuer en mode invité →</button>
       </div>
     </div>
 
@@ -2195,27 +2195,13 @@ window.addEventListener('DOMContentLoaded', ()=>{
   if(document.getElementById('s-vision-default')) document.getElementById('s-vision-default').checked = !!p.visionDefault;
   if(document.getElementById('s-memory')) document.getElementById('s-memory').checked = p.memoryEnabled!==false;
   S.webhookUrl = p.webhookUrl||'https://eldji8643.app.n8n.cloud/webhook/6afb5fab-0490-4112-ae2f-306b95acaf0e';
-  // App starts visible immediately — no forced login
+  // App visible immédiatement (mode invité par défaut)
   document.getElementById('app-screen').classList.add('visible');
   renderHistory(); startNewSession(); updateStats();
-  // Apply language
   if(p.lang) { applyLang(p.lang); const sel=document.getElementById('s-lang-select'); if(sel)sel.value=p.lang; }
-  // Auto-connect profile if saved
-  if (p.profileName && p.profileEmail) {
-    _profilePhotoB64 = p.profilePhoto || '';
-    S.user = { name: p.profileName, email: p.profileEmail, photo: _profilePhotoB64 };
-    updateAvatarUI();
-    document.getElementById('avatar-name').textContent = p.profileName;
-    document.getElementById('avatar-email').textContent = p.profileEmail;
-    const n2 = document.getElementById('s-name2'); if(n2) n2.value = p.profileName;
-    const e2 = document.getElementById('s-email2'); if(e2) e2.value = p.profileEmail;
-    updateTokenUI();
-    setTimeout(()=>{ if(!document.querySelector('.msg')) addMsgUI('assistant', R.greeting(p.profileName)); },400);
-  } else {
-    // Guest mode
-    updateTokenUI();
-  }
+  updateTokenUI();
   updateDropdownAuthState();
+  // Supabase Auth gère tout — pas d'auto-connect localStorage
   initSupa();
 });
 
@@ -2226,11 +2212,19 @@ let _supa = null;
 let _supaMode = 'signin';
 
 function initSupa() {
-  if (!window.supabase) { console.warn('Supabase SDK non chargé'); return; }
+  if (!window.supabase) { console.warn('Supabase SDK non chargé'); openLoginModal(); return; }
   _supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
   _supa.auth.getSession().then(({ data }) => {
-    if (data?.session?.user && !S.user) afterSupaAuth(data.session.user);
-  }).catch(() => {});
+    if (data?.session?.user) {
+      // Session existante → reconnexion silencieuse
+      afterSupaAuth(data.session.user);
+    } else {
+      // Pas de session → afficher le formulaire de connexion
+      setTimeout(() => openLoginModal(), 400);
+    }
+  }).catch(() => {
+    setTimeout(() => openLoginModal(), 400);
+  });
 }
 
 function switchAuthTab(mode) {
