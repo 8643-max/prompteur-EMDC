@@ -352,16 +352,18 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
   .btn-close-right{display:flex}
 }
 @media(max-width:640px){
-  .app-body{grid-template-columns:1fr;position:relative}
-  .sidebar{position:absolute;top:0;left:-100%;height:100%;z-index:15;box-shadow:8px 0 32px rgba(0,0,0,.5)}
+  .app-body{grid-template-columns:1fr;position:relative;overflow:hidden}
+  .sidebar{position:fixed;top:0;left:-100%;height:100%;width:85vw;max-width:300px;z-index:100;box-shadow:8px 0 32px rgba(0,0,0,.6);transition:left .25s ease}
   .sidebar.mobile-open{left:0}
+  #sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99}
+  #sidebar-overlay.show{display:block}
   .btn-hamburger{display:flex}
   .btn-close-sidebar{display:flex}
   .badge-workspace{display:none}
   .token-label{display:none}
   .btn-recharge{display:none}
-  /* Input bar mobile */
-  .input-bar{padding:8px 10px 12px}
+  /* Input bar mobile + safe-area iPhone */
+  .input-bar{padding:8px 10px calc(12px + env(safe-area-inset-bottom,0px))}
   .mode-switcher{gap:4px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
   .mode-switcher::-webkit-scrollbar{display:none}
   .mode-btn{padding:4px 8px;font-size:10px;white-space:nowrap}
@@ -369,7 +371,9 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
   .input-row{gap:6px}
   .btn-icon{width:36px;height:36px;font-size:15px;flex-shrink:0}
   .btn-send{width:36px;height:36px;font-size:15px;flex-shrink:0}
-  #chat-input{font-size:16px;min-height:36px} /* 16px évite le zoom auto iOS */
+  #chat-input{font-size:16px;min-height:36px}
+  /* Safe area header */
+  .app-header{padding-top:env(safe-area-inset-top,0px)}
 }
 </style>
 
@@ -479,6 +483,9 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
     </div>
   </div>
 </div>
+
+<!-- Overlay sidebar mobile -->
+<div id="sidebar-overlay" onclick="closeSidebar()"></div>
 
 <!-- ═══ APP ══════════════════════════════════════════════════════════ -->
 <div id="app-screen">
@@ -2152,8 +2159,16 @@ function toggleAvatarMenu() { document.getElementById('avatar-menu').classList.t
 document.addEventListener('click', e=>{
   if(!e.target.closest('#avatar-btn')&&!e.target.closest('#avatar-menu')) document.getElementById('avatar-menu')?.classList.remove('open');
 });
-function toggleSidebar() { document.getElementById('sidebar').classList.toggle('mobile-open'); }
-function closeSidebar() { document.getElementById('sidebar').classList.remove('mobile-open'); }
+function toggleSidebar() {
+  const s = document.getElementById('sidebar');
+  const o = document.getElementById('sidebar-overlay');
+  s.classList.toggle('mobile-open');
+  if(o) o.classList.toggle('show', s.classList.contains('mobile-open'));
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  const o = document.getElementById('sidebar-overlay'); if(o) o.classList.remove('show');
+}
 function toggleRightPanel() { document.getElementById('right-panel').classList.toggle('mobile-open'); }
 function closeRightPanel() { document.getElementById('right-panel').classList.remove('mobile-open'); }
 function useChip(text) { document.getElementById('chat-input').value=text; sendMessage(); }
