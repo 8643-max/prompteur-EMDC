@@ -1027,7 +1027,8 @@ const S = {
   mode: 'standard', currentTool: 'general',
   currentSessionId: null, pendingSession: null,
   hasFile: false, pendingFile: null,
-  memoryEnabled: true
+  memoryEnabled: true,
+  webhookUrl: 'https://eldji8643.app.n8n.cloud/webhook/saas/chat'
 };
 
 /* localStorage helpers */
@@ -1501,6 +1502,8 @@ async function sendMessage() {
           message: text,
           user: S.user?.name || 'Invité',
           email: S.user?.email || '',
+          user_id: S.user?.id || S.user?.email || 'guest',
+          session_id: S.currentSessionId || ('guest-' + Date.now().toString(36)),
           lang: S.lang || 'fr',
           mode: S.mode,
           tool: S.currentTool || null
