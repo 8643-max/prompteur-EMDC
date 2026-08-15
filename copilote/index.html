@@ -1971,8 +1971,11 @@ function handleGoogleCredential(response) {
   } catch(e) { showGoogleEmailInput(); }
 }
 function startGoogleAuth() {
-  // Sans vrai Client ID Google Cloud → ouvre directement le formulaire de profil
-  showGoogleEmailInput();
+  if (!_supa) { showGoogleEmailInput(); return; }
+  _supa.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: 'https://8643-max.github.io/prompteur-EMDC/copilote/' }
+  });
 }
 function showGoogleEmailInput() {
   document.getElementById('google-email-wrap').style.display='';
