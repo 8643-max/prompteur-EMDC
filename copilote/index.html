@@ -646,6 +646,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
     <div class="stab active" onclick="switchTab('general')">Général</div>
     <div class="stab" onclick="switchTab('compte')">Compte</div>
     <div class="stab" onclick="switchTab('memoire')">Mémoire</div>
+    <div class="stab" onclick="switchTab('connexions')">Connexions</div>
     <div class="stab" onclick="switchTab('connecteurs')">Connecteurs</div>
     <div class="stab" onclick="switchTab('securite')">Confidentialité</div>
     <div class="stab" onclick="switchTab('facturation')">Facturation</div>
@@ -729,7 +730,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
         <div class="sfield"><label>Mot de passe actuel</label><div class="pw-wrap"><input class="sinput" type="password" id="s-pw-old2" placeholder="••••••••"/><button class="pw-eye" type="button" onclick="togglePw('s-pw-old2',this)" title="Afficher/Masquer">👁</button></div></div>
         <div class="sfield"><label>Nouveau mot de passe</label><div class="pw-wrap"><input class="sinput" type="password" id="s-pw-new2" placeholder="••••••••"/><button class="pw-eye" type="button" onclick="togglePw('s-pw-new2',this)" title="Afficher/Masquer">👁</button></div></div>
         <div class="sfield"><label>Confirmer</label><div class="pw-wrap"><input class="sinput" type="password" id="s-pw-confirm2" placeholder="••••••••"/><button class="pw-eye" type="button" onclick="togglePw('s-pw-confirm2',this)" title="Afficher/Masquer">👁</button></div></div>
-        <button class="sbtn" onclick="switchTab('securite');document.getElementById('s-pw-old-conf').focus()" style="width:100%;margin-top:4px">🔒 Modifier le mot de passe dans Confidentialité →</button>
+        <button class="sbtn" onclick="switchTab('securite');setTimeout(()=>document.getElementById('s-pw-old')?.focus(),50)" style="width:100%;margin-top:4px">🔒 Modifier le mot de passe dans Confidentialité →</button>
       </div>
       <div class="sgroup">
         <div class="sgroup-title">Sessions actives</div>
@@ -913,8 +914,8 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
       </div>
       <div class="sgroup">
         <div class="sgroup-title">Consommation Vision</div>
-        <div class="token-bar-bg" style="margin-bottom:8px"><div class="token-bar-fill" id="usage-bar" style="width:16%"></div></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted)"><span>8 jetons utilisés</span><span>50 max / mois</span></div>
+        <div class="token-bar-bg" style="margin-bottom:8px"><div class="token-bar-fill" id="usage-bar" style="width:0%"></div></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted)"><span id="usage-label">0 jetons utilisés</span><span id="usage-max-label">50 max</span></div>
       </div>
       <div class="sinfo">📊 Les statistiques sont calculées depuis le début du mois et sauvegardées localement sur votre appareil.</div>
     </div>
@@ -1586,11 +1587,12 @@ function hideLoadingOverlay() { clearInterval(ltimer); document.getElementById('
 /* ═══ TOKEN ═════════════════════════════════════════════════════════ */
 function consumeToken() { if(S.tokens<=0){showTokenModal();return false;} S.tokens=Math.max(0,S.tokens-1); updateTokenUI(); return true; }
 function updateTokenUI() {
-  const t=S.tokens;
+  const t=S.tokens, m=S.maxTokens;
   document.getElementById('hdr-tokens').textContent=t;
   document.getElementById('panel-tokens').textContent=t;
+  const pm=document.getElementById('panel-max'); if(pm) pm.textContent=m;
   const el=document.getElementById('s-token-big'); if(el)el.textContent=t;
-  document.getElementById('token-bar').style.width=Math.max(0,Math.min(100,t/S.maxTokens*100))+'%';
+  document.getElementById('token-bar').style.width=Math.max(0,Math.min(100,t/m*100))+'%';
 }
 function showTokenModal() { document.getElementById('modal-tokens').classList.add('open'); }
 function closeTokenModal() { document.getElementById('modal-tokens').classList.remove('open'); }
@@ -1622,7 +1624,7 @@ function closeSettings() {
   document.getElementById('settings-panel').classList.remove('open');
 }
 function switchTab(tab) {
-  const tabs=['general','compte','memoire','connecteurs','securite','facturation','utilisation','capacites','apropos'];
+  const tabs=['general','compte','memoire','connexions','connecteurs','securite','facturation','utilisation','capacites','apropos'];
   document.querySelectorAll('.stab').forEach((el,i)=>el.classList.toggle('active',tabs[i]===tab));
   document.querySelectorAll('.settings-tab-content').forEach(el=>el.classList.remove('active'));
   const target=document.getElementById('stab-'+tab);
@@ -1639,7 +1641,7 @@ function switchTab(tab) {
     document.getElementById('stat-sessions').textContent=all.filter(s=>!s.archived).length;
     document.getElementById('stat-msgs').textContent=all.reduce((n,s)=>n+(s.messages?.length||0),0);
     document.getElementById('stat-docs').textContent=all.reduce((n,s)=>n+(s.messages?.filter(m=>m.text?.includes('📎')).length||0),0);
-    document.getElementById('stat-tokens').textContent=50-S.tokens;
+    document.getElementById('stat-tokens').textContent=Math.max(0,S.maxTokens-S.tokens);
   }
 }
 function filterConn(type, el) {
@@ -1753,10 +1755,12 @@ function updateStats() {
   if(statM) statM.textContent = totalMsgs;
   const totalDocs = all.reduce((n,s)=>n+(s.messages?.filter(m=>m.role==='user'&&m.text?.includes('📎')).length||0),0);
   if(statD) statD.textContent = totalDocs;
-  const usedTokens = 50 - S.tokens;
+  const usedTokens = Math.max(0, S.maxTokens - S.tokens);
   if(statT) statT.textContent = usedTokens;
   const bar = document.getElementById('usage-bar');
-  if(bar) bar.style.width = Math.min(100, Math.round(usedTokens/50*100))+'%';
+  if(bar) bar.style.width = Math.min(100, Math.round(usedTokens/S.maxTokens*100))+'%';
+  const ul = document.getElementById('usage-label'); if(ul) ul.textContent = usedTokens+' jetons utilisés';
+  const uml = document.getElementById('usage-max-label'); if(uml) uml.textContent = S.maxTokens+' max';
 }
 
 function savePref(k,v) { DB.savePref(k,v); }
@@ -1887,12 +1891,19 @@ function togglePw(id, btn) {
   inp.type = show ? 'text' : 'password';
   btn.textContent = show ? '🙈' : '👁';
 }
-function changePassword() {
+async function changePassword() {
   const o=document.getElementById('s-pw-old')?.value, n=document.getElementById('s-pw-new')?.value, c=document.getElementById('s-pw-confirm')?.value;
-  if(!o||!n||!c){alert('Remplissez tous les champs.');return;}
-  if(n!==c){alert('Les mots de passe ne correspondent pas.');return;}
-  alert('Mot de passe mis à jour avec succès.');
-  ['s-pw-old','s-pw-new','s-pw-confirm'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  if(!o||!n||!c){showToast('⚠️ Remplissez tous les champs.',2500);return;}
+  if(n!==c){showToast('⚠️ Les mots de passe ne correspondent pas.',2500);return;}
+  if(n.length<6){showToast('⚠️ Mot de passe min. 6 caractères.',2500);return;}
+  if(!_supa){showToast('⚠️ Service non disponible.',2500);return;}
+  try {
+    const {error}=await _supa.auth.updateUser({password:n});
+    if(error) throw error;
+    showToast('✅ Mot de passe mis à jour.',2500);
+    ['s-pw-old','s-pw-new','s-pw-confirm'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  } catch(e){showToast('⚠️ '+(e.message||'Erreur'),2800);}
+};
 }
 function logoutAll() { if(confirm('Déconnecter toutes les sessions ?')) { doLogout(); closeSettings(); } }
 function buyTokens(n) {
@@ -1910,7 +1921,7 @@ function openLoginModal(mode) {
   document.getElementById('avatar-menu').classList.remove('open');
   document.getElementById('login-step1').style.display='';
   document.getElementById('login-step2').style.display='none';
-  document.getElementById('google-email-wrap').style.display='none';
+  const gew=document.getElementById('google-email-wrap'); if(gew) gew.style.display='none';
   const inp = document.getElementById('google-email-inp'); if(inp) inp.value='';
   // Mode 'first_message' : titre et lien invité
   const titleEl = document.getElementById('login-title-text');
@@ -2105,7 +2116,7 @@ function doLogout() {
   const wc=document.getElementById('welcome-center'); if(wc)wc.style.display='';
   document.getElementById('result-card').classList.remove('show');
   document.getElementById('preview-empty').style.display='';
-  S.tokens=42; S.currentSessionId=null; S.pendingSession=null; updateTokenUI();
+  S.tokens=0; S.currentSessionId=null; S.pendingSession=null; updateTokenUI();
 }
 
 function deleteAccount() {
