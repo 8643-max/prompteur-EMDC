@@ -1626,6 +1626,8 @@ function closeSettings() {
 function switchTab(tab) {
   const tabs=['general','compte','memoire','connexions','connecteurs','securite','facturation','utilisation','capacites','apropos'];
   document.querySelectorAll('.stab').forEach((el,i)=>el.classList.toggle('active',tabs[i]===tab));
+  const activeStab=document.querySelector('.stab.active');
+  if(activeStab)activeStab.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'});
   document.querySelectorAll('.settings-tab-content').forEach(el=>el.classList.remove('active'));
   const target=document.getElementById('stab-'+tab);
   if(target)target.classList.add('active');
