@@ -5,7 +5,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>EMDC Copilote d'Entreprise</title>
-<!-- Google Identity Services : activé uniquement si GOOGLE_CLIENT_ID est configuré en production -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -432,19 +432,24 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
       <span class="badge-demo">Espace de travail IA</span>
     </div>
 
-    <!-- Étape 1 : connexion -->
+    <!-- Étape 1 : connexion Supabase -->
     <div id="login-step1" class="login-step">
-      <p class="login-title" id="login-title-text">Connectez-vous à votre espace de travail</p>
-      <p id="login-subtitle-text" style="display:none;font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:16px;line-height:1.6">Créez votre profil pour sauvegarder vos conversations et recevoir des réponses adaptées.</p>
-      <button class="btn-google" onclick="startGoogleAuth()">
-        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-3.59-13.46-8.83l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-        Continuer avec Google
-      </button>
-      <div id="google-email-wrap" style="display:none;margin-top:10px">
-        <div class="form-group"><label>Adresse e-mail Google</label><input type="email" id="google-email-inp" placeholder="vous@gmail.com" autocomplete="email" onkeydown="if(event.key==='Enter')handleGoogleEmail()"/></div>
-        <button class="btn-login" onclick="handleGoogleEmail()">Continuer →</button>
+      <p class="login-title" id="login-title-text">Connectez-vous à votre espace</p>
+      <p id="login-subtitle-text" style="display:none;font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:16px;line-height:1.6">Créez votre profil pour sauvegarder vos conversations.</p>
+      <!-- Tabs connexion / inscription -->
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button id="tab-signin" onclick="switchAuthTab('signin')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--gold);background:var(--gold-dim);color:var(--gold);font-size:12px;font-weight:600;cursor:pointer">Se connecter</button>
+        <button id="tab-signup" onclick="switchAuthTab('signup')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text-secondary);font-size:12px;cursor:pointer">Créer un compte</button>
       </div>
-      <p class="login-note">🔒 Vos données restent sur votre appareil — aucune information partagée</p>
+      <div class="form-group"><label>Email</label><input type="email" id="supa-email" placeholder="vous@exemple.com" autocomplete="email" onkeydown="if(event.key==='Enter')submitSupaAuth()"/></div>
+      <div class="form-group" id="supa-name-group" style="display:none"><label>Nom complet</label><input type="text" id="supa-name" placeholder="Votre prénom et nom" onkeydown="if(event.key==='Enter')submitSupaAuth()"/></div>
+      <div class="form-group"><label>Mot de passe</label>
+        <div class="pw-wrap"><input type="password" id="supa-pass" class="sinput" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitSupaAuth()"/>
+        <button class="pw-eye" type="button" onclick="const i=document.getElementById('supa-pass');i.type=i.type==='password'?'text':'password'">👁</button></div>
+      </div>
+      <div id="supa-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px;text-align:center;padding:6px;background:var(--red-dim);border-radius:6px"></div>
+      <button class="btn-login" id="supa-submit-btn" onclick="submitSupaAuth()">Se connecter →</button>
+      <p class="login-note">🔒 Connexion sécurisée — 10 jetons offerts à l'inscription</p>
       <div id="guest-continue" style="display:none;text-align:center;margin-top:12px">
         <button onclick="continueAsGuest()" style="background:none;border:none;color:var(--text-muted);font-size:12px;cursor:pointer;text-decoration:underline;padding:0">Continuer sans compte →</button>
       </div>
@@ -1477,7 +1482,7 @@ async function sendMessage() {
   if (webhookUrl) {
     try {
       const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 12000);
+      const tid = setTimeout(() => ctrl.abort(), 60000);
       const whHeaders = { 'Content-Type': 'application/json' };
       if (prefs.webhookHeaderName && prefs.webhookHeaderValue) whHeaders[prefs.webhookHeaderName] = prefs.webhookHeaderValue;
       const r = await fetch(webhookUrl, {
@@ -1520,6 +1525,7 @@ async function sendMessage() {
 
   removeTyping();
   addMsgUI('assistant', resp);
+  setTimeout(refreshSupaTokens, 800);
 }
 
 /* ═══ MODE ══════════════════════════════════════════════════════════ */
@@ -2013,6 +2019,7 @@ function completeProfile() {
 
 function launchApp(name, email, photo, lang) {
   S.user = { name, email, photo };
+  if (S._supaTokens !== undefined) { S.tokens = S._supaTokens; delete S._supaTokens; }
   const p = DB.prefs();
   if (p.fontSize) applyFontSize(p.fontSize);
   if (p.visionDefault) setMode('vision');
@@ -2077,6 +2084,7 @@ function saveDisplayName() {
 }
 
 function doLogout() {
+  if (_supa) _supa.auth.signOut().catch(()=>{});
   document.getElementById('avatar-menu').classList.remove('open');
   S.user = null; _pendingEmail = ''; _profilePhotoB64 = '';
   // Reset avatar to generic
@@ -2193,5 +2201,103 @@ window.addEventListener('DOMContentLoaded', ()=>{
     updateTokenUI();
   }
   updateDropdownAuthState();
+  initSupa();
 });
+
+/* ═══ SUPABASE AUTH ════════════════════════════════════════════════ */
+const SUPA_URL = 'https://tjyvogckvkbqoagxmflg.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqeXZvZ2NrdmticW9hZ3htZmxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY2MjI4OTIsImV4cCI6MjEwMjE5ODg5Mn0.ciB4XQnLhmjjUvCDNJKZBdAaIbP1zGSXOR2MLsRnO48';
+let _supa = null;
+let _supaMode = 'signin';
+
+function initSupa() {
+  if (!window.supabase) { console.warn('Supabase SDK non chargé'); return; }
+  _supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+  _supa.auth.getSession().then(({ data }) => {
+    if (data?.session?.user && !S.user) afterSupaAuth(data.session.user);
+  }).catch(() => {});
+}
+
+function switchAuthTab(mode) {
+  _supaMode = mode;
+  const ng = document.getElementById('supa-name-group');
+  const tsi = document.getElementById('tab-signin');
+  const tsu = document.getElementById('tab-signup');
+  const sb = document.getElementById('supa-submit-btn');
+  const ACTIVE = 'flex:1;padding:8px;border-radius:8px;border:1px solid var(--gold);background:var(--gold-dim);color:var(--gold);font-size:12px;font-weight:600;cursor:pointer';
+  const IDLE = 'flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text-secondary);font-size:12px;cursor:pointer';
+  if (mode === 'signup') {
+    if (ng) ng.style.display = '';
+    if (tsi) tsi.style.cssText = IDLE;
+    if (tsu) tsu.style.cssText = ACTIVE;
+    if (sb) sb.textContent = 'Créer mon compte →';
+    document.getElementById('supa-pass')?.setAttribute('autocomplete','new-password');
+  } else {
+    if (ng) ng.style.display = 'none';
+    if (tsi) tsi.style.cssText = ACTIVE;
+    if (tsu) tsu.style.cssText = IDLE;
+    if (sb) sb.textContent = 'Se connecter →';
+    document.getElementById('supa-pass')?.setAttribute('autocomplete','current-password');
+  }
+  showSupaError('');
+}
+
+function showSupaError(msg) {
+  const el = document.getElementById('supa-error');
+  if (!el) return;
+  el.textContent = msg; el.style.display = msg ? '' : 'none';
+}
+
+async function submitSupaAuth() {
+  if (!_supa) { showSupaError('Service non disponible. Rechargez la page.'); return; }
+  const email = (document.getElementById('supa-email')?.value || '').trim();
+  const pass = document.getElementById('supa-pass')?.value || '';
+  const name = (document.getElementById('supa-name')?.value || '').trim();
+  if (!email.includes('@')) return showSupaError('Email invalide.');
+  if (pass.length < 6) return showSupaError('Mot de passe min. 6 caractères.');
+  if (_supaMode === 'signup' && !name) return showSupaError('Entrez votre nom complet.');
+  const btn = document.getElementById('supa-submit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⌛ Connexion...'; }
+  showSupaError('');
+  try {
+    if (_supaMode === 'signup') {
+      const { data, error } = await _supa.auth.signUp({ email, password: pass, options: { data: { nom: name } } });
+      if (error) throw error;
+      await _supa.from('users').upsert({ email, nom: name, jetons: 10 }, { onConflict: 'email' });
+      if (data.user) { await afterSupaAuth(data.user); }
+      else { if (btn) { btn.disabled = false; btn.textContent = 'Créer mon compte →'; } showSupaError('✅ Vérifiez votre email pour confirmer votre compte.'); }
+    } else {
+      const { data, error } = await _supa.auth.signInWithPassword({ email, password: pass });
+      if (error) throw error;
+      await afterSupaAuth(data.user);
+    }
+  } catch(e) {
+    const MSGS = { 'Invalid login credentials':'Email ou mot de passe incorrect.', 'Email not confirmed':'Confirmez votre email d\'abord.', 'User already registered':'Email déjà utilisé — connectez-vous.', 'Password should be at least 6 characters':'Mot de passe min. 6 caractères.' };
+    showSupaError(MSGS[e.message] || e.message || 'Erreur de connexion.');
+    if (btn) { btn.disabled = false; switchAuthTab(_supaMode); }
+  }
+}
+
+async function afterSupaAuth(user) {
+  let tokens = 10, nom = '';
+  try {
+    const { data } = await _supa.from('users').select('nom,jetons').eq('email', user.email).maybeSingle();
+    if (data) { tokens = data.jetons ?? 10; nom = data.nom || ''; }
+    else {
+      nom = user.user_metadata?.nom || user.email.split('@')[0];
+      await _supa.from('users').insert({ email: user.email, nom, jetons: 10 }).catch(() => {});
+    }
+  } catch(e) {}
+  nom = nom || user.user_metadata?.nom || user.email.split('@')[0];
+  S._supaTokens = tokens;
+  launchApp(nom, user.email, DB.prefs().profilePhoto || '', DB.prefs().lang || 'fr');
+}
+
+async function refreshSupaTokens() {
+  if (!_supa || !S.user?.email) return;
+  try {
+    const { data } = await _supa.from('users').select('jetons').eq('email', S.user.email).maybeSingle();
+    if (data && typeof data.jetons === 'number') { S.tokens = data.jetons; updateTokenUI(); }
+  } catch(e) {}
+}
 </script>
