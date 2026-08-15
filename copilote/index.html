@@ -1496,10 +1496,15 @@ async function sendMessage() {
       });
       clearTimeout(tid);
       if (r.ok) {
-        const data = await r.json();
-        resp = data.response || data.text || data.message || data.output || null;
+        const bodyText = await r.text();
+        if (bodyText && bodyText.trim().length > 2) {
+          try { const data = JSON.parse(bodyText); resp = data.response || data.text || data.message || data.output || null; } catch(_) { resp = null; }
+        }
       }
-    } catch(e) { resp = null; }
+    } catch(e) {
+      if (e.name === 'AbortError') { resp = 'Le serveur met trop de temps. Reessaie.'; }
+      else { resp = null; }
+    }
   }
 
   if (!resp) {
