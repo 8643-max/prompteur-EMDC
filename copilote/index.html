@@ -1605,6 +1605,11 @@ function openSettings(tab='general') {
   document.getElementById('avatar-menu').classList.remove('open');
   document.getElementById('settings-overlay').classList.add('open');
   document.getElementById('settings-panel').classList.add('open');
+  // Tab Connexions réservé à l'admin EMDC uniquement
+  const isAdmin = S.user?.email === 'eldjidiallo8643@gmail.com';
+  const connexionsTab = document.querySelector('.stab[onclick*="connexions"]');
+  if (connexionsTab) connexionsTab.style.display = isAdmin ? '' : 'none';
+  if (tab === 'connexions' && !isAdmin) tab = 'general';
   switchTab(tab);
   // populate
   const p = DB.prefs();
@@ -2212,7 +2217,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
   if(document.getElementById('s-sound')) document.getElementById('s-sound').checked = !!p.sound;
   if(document.getElementById('s-vision-default')) document.getElementById('s-vision-default').checked = !!p.visionDefault;
   if(document.getElementById('s-memory')) document.getElementById('s-memory').checked = p.memoryEnabled!==false;
-  S.webhookUrl = p.webhookUrl||'https://eldji8643.app.n8n.cloud/webhook/6afb5fab-0490-4112-ae2f-306b95acaf0e';
+  S.webhookUrl = p.webhookUrl||'https://eldji8643.app.n8n.cloud/webhook/saas/chat';
   // App visible immédiatement (mode invité par défaut)
   document.getElementById('app-screen').classList.add('visible');
   renderHistory(); startNewSession(); updateStats();
@@ -2230,18 +2235,20 @@ let _supa = null;
 let _supaMode = 'signin';
 
 function initSupa() {
-  if (!window.supabase) { console.warn('Supabase SDK non chargé'); openLoginModal(); return; }
+  if (!window.supabase) { console.warn('Supabase SDK non chargé'); S._guestMode = true; updateDropdownAuthState(); return; }
   _supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
   _supa.auth.getSession().then(({ data }) => {
     if (data?.session?.user) {
       // Session existante → reconnexion silencieuse
       afterSupaAuth(data.session.user);
     } else {
-      // Pas de session → afficher le formulaire de connexion
-      setTimeout(() => openLoginModal(), 400);
+      // Pas de session → mode invité par défaut, pas de modal forcé
+      S._guestMode = true;
+      updateDropdownAuthState();
     }
   }).catch(() => {
-    setTimeout(() => openLoginModal(), 400);
+    S._guestMode = true;
+    updateDropdownAuthState();
   });
 }
 
