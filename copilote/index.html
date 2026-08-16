@@ -183,6 +183,29 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 .upload-formats{font-size:10.5px;color:var(--text-muted);margin-top:3px}
 .upload-preview{display:none;margin:0 18px 8px;background:var(--bg-elevated);border:1px solid var(--border-strong);border-radius:8px;padding:9px 12px;align-items:center;gap:10px}
 .upload-preview.show{display:flex}
+/* ── DOCS PANEL ── */
+.docs-panel{padding:14px;display:none;flex-direction:column;gap:14px}
+.docs-panel.show{display:flex}
+.docs-panel-title{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold-muted);font-weight:600;margin-bottom:2px}
+.docs-upload-area{border:2px dashed var(--border-strong);border-radius:var(--radius);padding:14px 12px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
+.docs-upload-area:hover,.docs-upload-area.drag-over{border-color:var(--gold);background:var(--gold-dim)}
+.docs-upload-area input[type=file]{display:none}
+.docs-upload-label{font-size:12.5px;color:var(--text-secondary);margin-top:6px}
+.docs-upload-label strong{color:var(--text-primary);display:block;font-size:13px;margin-bottom:2px}
+.docs-upload-formats{font-size:10px;color:var(--text-muted);margin-top:3px}
+.docs-upload-btn{width:100%;margin-top:8px;padding:9px;background:var(--gold-dim);border:1px solid var(--border-strong);border-radius:8px;color:var(--gold);font-size:13px;font-weight:600;cursor:pointer;transition:background .2s}
+.docs-upload-btn:hover{background:rgba(212,175,55,.22)}
+.docs-upload-btn:disabled{opacity:.5;cursor:not-allowed}
+.docs-status{font-size:11.5px;color:var(--text-secondary);text-align:center;min-height:16px}
+.docs-list-section{}
+.docs-list-empty{font-size:12px;color:var(--text-muted);text-align:center;padding:14px 0}
+.doc-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;margin-bottom:6px}
+.doc-item-icon{font-size:18px;flex-shrink:0}
+.doc-item-info{flex:1;min-width:0}
+.doc-item-name{font-size:12.5px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.doc-item-meta{font-size:10.5px;color:var(--text-muted);margin-top:1px}
+.doc-item-del{background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:13px;cursor:pointer;width:26px;height:26px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:color .15s,border-color .15s}
+.doc-item-del:hover{color:var(--red);border-color:var(--red)}
 .upload-preview-name{font-size:13px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .upload-preview-size{font-size:11px;color:var(--text-muted)}
 .upload-preview-remove{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;transition:color .15s;padding:0 4px}
@@ -545,6 +568,9 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
           <div class="tool-item" id="tool-sheet" onclick="selectTool('sheet','📋','Compléter un tableau')">
             <span class="tool-icon">📋</span> Compléter un tableau
           </div>
+          <div class="tool-item" id="tool-documents" onclick="selectTool('documents','📚','Base documentaire')">
+            <span class="tool-icon">📚</span> Base documentaire
+          </div>
         </div>
         <div class="sidebar-divider"></div>
         <div class="sidebar-section">
@@ -628,6 +654,34 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
         <div class="preview-empty" id="preview-empty">
           <div class="preview-empty-icon">📂</div>
           <div class="preview-empty-text">Les résultats d'analyse et les documents générés apparaîtront ici.</div>
+        </div>
+        <!-- DOCS MANAGEMENT PANEL -->
+        <div class="docs-panel" id="docs-panel">
+          <div>
+            <div class="docs-panel-title">📚 Ajouter un document</div>
+            <div class="docs-upload-area" id="docs-drop-zone"
+              ondragover="docsDragOver(event)" ondrop="docsDrop(event)" ondragleave="docsDragLeave(event)"
+              onclick="document.getElementById('docs-file-input').click()">
+              <div style="font-size:28px">📄</div>
+              <input type="file" id="docs-file-input" accept=".txt,.md,.csv" onchange="docsFileSelect(event)">
+              <div class="docs-upload-label">
+                <strong>Glissez ou cliquez pour ajouter</strong>
+                <div id="docs-selected-name" style="color:var(--gold);font-size:12px;margin-top:3px"></div>
+              </div>
+              <div class="docs-upload-formats">TXT · MD · CSV — Pour PDF/Word : copiez le texte ci-dessous</div>
+            </div>
+            <textarea id="docs-paste-text" rows="3" placeholder="Ou collez le texte directement ici..."
+              style="width:100%;margin-top:8px;padding:9px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:12px;resize:vertical;outline:none;font-family:inherit"
+              oninput="if(this.value){document.getElementById('docs-selected-name').textContent='';document.getElementById('docs-fname').placeholder='Nom du document (requis)'}"></textarea>
+            <input id="docs-fname" type="text" placeholder="Nom du fichier (ex: guide-tarifs.txt)"
+              style="width:100%;margin-top:6px;padding:8px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:12px;outline:none;font-family:inherit">
+            <div class="docs-status" id="docs-status"></div>
+            <button class="docs-upload-btn" id="docs-upload-btn" onclick="submitDocToRAG()">⬆ Ajouter à ma base</button>
+          </div>
+          <div class="docs-list-section">
+            <div class="docs-panel-title">Mes documents</div>
+            <div id="docs-list-container"><div class="docs-list-empty">Aucun document</div></div>
+          </div>
         </div>
       </div>
     </aside>
@@ -1046,7 +1100,8 @@ const toolConfig = {
   analyse:      { icon:'📄', label:'Analyseur de fichiers', welcome:'Mode **Analyse de fichiers** activé. Joignez votre document avec 📎 et posez votre question.', chips:['📄 Analyser un PDF','🖼️ Analyser une image','📊 Lire un Excel'], chipTexts:['Analyse ce document PDF et résume les points clés','Analyse cette image et extrait le texte','Analyse ce fichier Excel et donne-moi un résumé'] },
   presentation: { icon:'📊', label:'Présentations', welcome:'Mode **Présentation** activé. Décrivez le sujet et je génère vos diapositives Google Slides.', chips:['📊 Nouvelle présentation','🎨 Modifier le style','📋 Ajouter des données'], chipTexts:['Génère une présentation sur la digitalisation des PME','Explique-moi comment modifier le style de mes slides','Ajoute les données de ce fichier à ma présentation'] },
   recherche:    { icon:'🔍', label:'Recherche documentaire', welcome:'Mode **Recherche** activé. Posez votre question et je cherche dans vos documents.', chips:['🔍 Recherche libre','📁 Chercher dans Drive','📝 Résumer'], chipTexts:['Recherche des informations sur la gestion de projet agile','Cherche dans mon Drive les documents sur les fournisseurs','Résume les points clés de ce document'] },
-  sheet:        { icon:'📋', label:'Tableaux Google Sheets', welcome:'Mode **Tableau** activé. Décrivez les données à intégrer dans votre Google Sheet.', chips:['📋 Remplir un tableau','📈 Créer des formules','📊 Analyser des données'], chipTexts:['Remplis mon tableau avec ces données','Crée des formules pour calculer les totaux automatiquement','Analyse les données de ce tableau et dis-moi ce que tu vois'] }
+  sheet:        { icon:'📋', label:'Tableaux Google Sheets', welcome:'Mode **Tableau** activé. Décrivez les données à intégrer dans votre Google Sheet.', chips:['📋 Remplir un tableau','📈 Créer des formules','📊 Analyser des données'], chipTexts:['Remplis mon tableau avec ces données','Crée des formules pour calculer les totaux automatiquement','Analyse les données de ce tableau et dis-moi ce que tu vois'] },
+  documents:    { icon:'📚', label:'Base documentaire', welcome:'Mode **Base documentaire** activé. Ajoutez vos fichiers dans le panneau de droite, puis posez des questions sur leur contenu.', chips:['📄 Que contient ma base ?','🔍 Chercher une info','📋 Résumer un doc'], chipTexts:['Que contient ma base documentaire ?','Recherche des informations sur les tarifs','Résume le document le plus récent'] }
 };
 
 /* ═══ SESSIONS ══════════════════════════════════════════════════════ */
@@ -1245,6 +1300,24 @@ function selectTool(tool, icon, label) {
       d.onclick = () => useChip(cfg.chipTexts[i]);
       chips.appendChild(d);
     });
+  }
+  // Docs panel visibility
+  const docsPanel = document.getElementById('docs-panel');
+  const previewEmpty = document.getElementById('preview-empty');
+  const tokenPanel = document.querySelector('.token-panel');
+  const resultCard = document.getElementById('result-card');
+  if (tool === 'documents') {
+    if (docsPanel) docsPanel.classList.add('show');
+    if (previewEmpty) previewEmpty.style.display = 'none';
+    if (tokenPanel) tokenPanel.style.display = 'none';
+    if (resultCard) resultCard.style.display = 'none';
+    document.getElementById('right-panel').classList.add('mobile-open');
+    loadUserDocs();
+  } else {
+    if (docsPanel) docsPanel.classList.remove('show');
+    if (previewEmpty) previewEmpty.style.display = '';
+    if (tokenPanel) tokenPanel.style.display = '';
+    if (resultCard) resultCard.style.display = '';
   }
   renderHistory();
   newSession();
@@ -2194,6 +2267,155 @@ function closeSidebar() {
 }
 function toggleRightPanel() { document.getElementById('right-panel').classList.toggle('mobile-open'); }
 function closeRightPanel() { document.getElementById('right-panel').classList.remove('mobile-open'); }
+
+/* ═══ BASE DOCUMENTAIRE RAG ════════════════════════════════════════ */
+const DOCS_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/docs';
+let _docsSelectedFile = null;
+
+function docsDragOver(e) { e.preventDefault(); document.getElementById('docs-drop-zone').classList.add('drag-over'); }
+function docsDragLeave() { document.getElementById('docs-drop-zone').classList.remove('drag-over'); }
+function docsDrop(e) {
+  e.preventDefault();
+  document.getElementById('docs-drop-zone').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) setDocsFile(f);
+}
+function docsFileSelect(e) {
+  const f = e.target.files[0];
+  if (f) setDocsFile(f);
+}
+function setDocsFile(file) {
+  _docsSelectedFile = file;
+  document.getElementById('docs-selected-name').textContent = '📎 ' + file.name;
+  document.getElementById('docs-fname').value = file.name;
+  document.getElementById('docs-paste-text').value = '';
+}
+
+function setDocsStatus(msg, color) {
+  const el = document.getElementById('docs-status');
+  if (el) { el.textContent = msg; el.style.color = color || 'var(--text-secondary)'; }
+}
+
+async function submitDocToRAG() {
+  if (!S.user?.email) {
+    setDocsStatus('⚠️ Connectez-vous pour ajouter des documents', 'var(--amber)');
+    openLoginModal();
+    return;
+  }
+  const btn = document.getElementById('docs-upload-btn');
+  const fname = document.getElementById('docs-fname').value.trim() || ('doc-' + Date.now() + '.txt');
+  const pasteText = document.getElementById('docs-paste-text').value.trim();
+
+  let content = '';
+  if (pasteText) {
+    content = pasteText;
+  } else if (_docsSelectedFile) {
+    const ext = _docsSelectedFile.name.split('.').pop().toLowerCase();
+    if (!['txt','md','csv','json'].includes(ext)) {
+      setDocsStatus('⚠️ Format non supporté. Collez le texte ci-dessus ou utilisez .txt/.md/.csv', 'var(--amber)');
+      return;
+    }
+    try {
+      content = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = e => res(e.target.result);
+        r.onerror = rej;
+        r.readAsText(_docsSelectedFile);
+      });
+    } catch(e) {
+      setDocsStatus('❌ Impossible de lire le fichier', 'var(--red)');
+      return;
+    }
+  } else {
+    setDocsStatus('⚠️ Sélectionnez un fichier ou collez du texte', 'var(--amber)');
+    return;
+  }
+
+  btn.disabled = true;
+  setDocsStatus('⏳ Ingestion en cours...', 'var(--gold)');
+
+  try {
+    const r = await fetch(DOCS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operation: 'upload', user_id: S.user.email, filename: fname, content })
+    });
+    const data = await r.json();
+    if (data.success !== false) {
+      setDocsStatus('✅ Document ajouté à votre base !', 'var(--green)');
+      document.getElementById('docs-paste-text').value = '';
+      document.getElementById('docs-fname').value = '';
+      document.getElementById('docs-selected-name').textContent = '';
+      _docsSelectedFile = null;
+      document.getElementById('docs-file-input').value = '';
+      setTimeout(() => { setDocsStatus(''); loadUserDocs(); }, 1500);
+    } else {
+      setDocsStatus('❌ Erreur lors de l\'ingestion', 'var(--red)');
+    }
+  } catch(e) {
+    setDocsStatus('❌ Serveur inaccessible. Réessayez.', 'var(--red)');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function loadUserDocs() {
+  const container = document.getElementById('docs-list-container');
+  if (!container) return;
+  if (!S.user?.email) {
+    container.innerHTML = '<div class="docs-list-empty">Connectez-vous pour voir vos documents</div>';
+    return;
+  }
+  container.innerHTML = '<div class="docs-list-empty">⏳ Chargement...</div>';
+  try {
+    const r = await fetch(DOCS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operation: 'list', user_id: S.user.email })
+    });
+    const data = await r.json();
+    const docs = data.documents || [];
+    if (!docs.length) {
+      container.innerHTML = '<div class="docs-list-empty">Aucun document — ajoutez-en un ci-dessus</div>';
+      return;
+    }
+    container.innerHTML = docs.map(d => `
+      <div class="doc-item">
+        <span class="doc-item-icon">📄</span>
+        <div class="doc-item-info">
+          <div class="doc-item-name" title="${esc(d.filename)}">${esc(d.filename)}</div>
+          <div class="doc-item-meta">${fmtDocSize(d.size)} · ${fmtDate(d.created_at)}</div>
+        </div>
+        <button class="doc-item-del" title="Supprimer" onclick="deleteDoc('${esc(d.filename)}')">🗑</button>
+      </div>
+    `).join('');
+  } catch(e) {
+    container.innerHTML = '<div class="docs-list-empty">Erreur de chargement</div>';
+  }
+}
+
+function fmtDocSize(bytes) {
+  if (!bytes) return '—';
+  if (bytes < 1024) return bytes + ' o';
+  if (bytes < 1024*1024) return Math.round(bytes/1024) + ' Ko';
+  return (bytes/1024/1024).toFixed(1) + ' Mo';
+}
+
+async function deleteDoc(filename) {
+  if (!S.user?.email) return;
+  if (!confirm(`Supprimer "${filename}" de votre base documentaire ?`)) return;
+  try {
+    const r = await fetch(DOCS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operation: 'delete', user_id: S.user.email, filename })
+    });
+    await r.json();
+    loadUserDocs();
+  } catch(e) {
+    alert('Erreur lors de la suppression');
+  }
+}
 function useChip(text) { document.getElementById('chat-input').value=text; sendMessage(); }
 function handleKey(e) { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();} }
 function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
