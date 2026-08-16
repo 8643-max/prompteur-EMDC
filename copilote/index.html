@@ -941,10 +941,10 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
         <div class="s-usage-big" id="s-token-big">42</div>
         <div class="s-usage-sub">jetons Vision disponibles</div>
         <div style="display:flex;gap:8px;margin-bottom:8px">
-          <button class="sbtn" onclick="buyTokens(50)" style="flex:1">💳 50 jetons — 5 €</button>
-          <button class="sbtn" onclick="buyTokens(200)" style="flex:1">💎 200 jetons — 15 €</button>
+          <button class="sbtn" onclick="buyTokens('starter')" style="flex:1">💳 50 jetons — 5 €</button>
+          <button class="sbtn" onclick="buyTokens('pro')" style="flex:1">💎 200 jetons — 15 €</button>
         </div>
-        <button class="sbtn" onclick="buyTokens(500)" style="width:100%">🚀 500 jetons — 30 €</button>
+        <button class="sbtn" onclick="buyTokens('expert')" style="width:100%">🚀 500 jetons — 30 €</button>
       </div>
       <div class="sgroup">
         <div class="sgroup-title">Historique des achats</div>
@@ -1988,11 +1988,24 @@ async function changePassword() {
   } catch(e){showToast('⚠️ '+(e.message||'Erreur'),2800);}
 }
 function logoutAll() { if(confirm('Déconnecter toutes les sessions ?')) { doLogout(); closeSettings(); } }
-function buyTokens(n) {
-  const p=DB.prefs(), url=p.stripeUrl;
-  if(url) { window.open(url,'_blank'); return; }
-  addMsgUI('assistant', `💳 **Achat de ${n} jetons**\n\nConfigurez d\'abord votre lien Stripe dans **Paramètres → Connexions → Paiement**.\n\nEn production, ce bouton ouvrira directement votre page de paiement Stripe.`);
-  closeSettings();
+async function buyTokens(pack) {
+  if (!S.user?.email) { closeSettings(); openLoginModal(); return; }
+  showToast('⏳ Préparation du paiement…', 4000);
+  try {
+    const r = await fetch(ASSISTANT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'create_topup', user_id: S.user.email, email: S.user.email, pack })
+    });
+    const data = await r.json();
+    if (data.success && data.checkout_url) {
+      window.location.href = data.checkout_url;
+    } else {
+      showToast('⚠️ ' + (data.error || 'Erreur lors de la création du paiement.'), 3500);
+    }
+  } catch (e) {
+    showToast('⚠️ Impossible de contacter le serveur de paiement.', 3500);
+  }
 }
 
 /* ═══ LOGIN MODAL ════════════════════════════════════════════════════ */
@@ -2137,6 +2150,8 @@ function launchApp(name, email, photo, lang) {
   const n2 = document.getElementById('s-name2'); if(n2) n2.value = name;
   const e2 = document.getElementById('s-email2'); if(e2) e2.value = email;
   updateTokenUI(); renderHistory(); startNewSession();
+  refreshSupaTokens();
+  if (S._paiementSucces) { delete S._paiementSucces; setTimeout(refreshSupaTokens, 3000); }
   // Message en attente (tapé avant la connexion) → l'envoyer maintenant
   if (S._pendingMsg) {
     const msg = S._pendingMsg; S._pendingMsg = '';
@@ -2270,6 +2285,7 @@ function closeRightPanel() { document.getElementById('right-panel').classList.re
 
 /* ═══ BASE DOCUMENTAIRE RAG ════════════════════════════════════════ */
 const DOCS_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/docs';
+const ASSISTANT_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/assistant';
 let _docsSelectedFile = null;
 
 function docsDragOver(e) { e.preventDefault(); document.getElementById('docs-drop-zone').classList.add('drag-over'); }
@@ -2446,6 +2462,15 @@ window.addEventListener('DOMContentLoaded', ()=>{
   if(p.lang) { applyLang(p.lang); const sel=document.getElementById('s-lang-select'); if(sel)sel.value=p.lang; }
   updateTokenUI();
   updateDropdownAuthState();
+  // Retour de paiement Stripe (succès/annulation)
+  const _paiementParam = new URLSearchParams(window.location.search).get('paiement');
+  if (_paiementParam === 'succes') {
+    showToast('✅ Paiement réussi — mise à jour de votre solde…', 3500);
+    S._paiementSucces = true;
+  } else if (_paiementParam === 'annule') {
+    showToast('Paiement annulé.', 2500);
+  }
+  if (_paiementParam) history.replaceState({}, '', window.location.pathname);
   // Supabase Auth gère tout — pas d'auto-connect localStorage
   initSupa();
 });
@@ -2555,6 +2580,18 @@ async function afterSupaAuth(user) {
 }
 
 async function refreshSupaTokens() {
-  // Tokens gérés localement — pas de colonne jetons dans users pour l'instant
+  if (!S.user?.email) return;
+  try {
+    const r = await fetch(ASSISTANT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'check_balance', user_id: S.user.email })
+    });
+    const data = await r.json();
+    if (data.success && typeof data.balance === 'number') {
+      S.tokens = data.balance;
+      updateTokenUI();
+    }
+  } catch (e) {}
 }
 </script>
