@@ -2228,6 +2228,31 @@ async function claimSignupBonus(email) {
   } catch (e) {}
 }
 
+// Traduit en français clair les messages techniques du service d'authentification.
+function authErrorFr(raw) {
+  const m = String(raw || '');
+  const EXACT = {
+    'User already registered': 'Cet email possède déjà un compte. Utilisez « Connectez-vous ici » juste en dessous.',
+    'Invalid login credentials': 'Email ou mot de passe incorrect.',
+    'Email not confirmed': 'Votre email n\'est pas encore confirmé. Ouvrez le message que nous vous avons envoyé.',
+    'Password should be at least 6 characters': 'Mot de passe trop court : 6 caractères minimum.',
+    'User not found': 'Aucun compte ne correspond à cet email.',
+    'Signups not allowed for this instance': 'Les inscriptions sont momentanément fermées.',
+    'New password should be different from the old password': 'Le nouveau mot de passe doit être différent de l\'ancien.',
+  };
+  if (EXACT[m]) return EXACT[m];
+  const has = (s) => m.toLowerCase().includes(s);
+  if (has('already registered') || has('already been registered')) return EXACT['User already registered'];
+  if (has('invalid login')) return EXACT['Invalid login credentials'];
+  if (has('not confirmed')) return EXACT['Email not confirmed'];
+  if (has('at least 6 characters') || has('password should be')) return EXACT['Password should be at least 6 characters'];
+  if (has('invalid format') || has('validate email')) return 'Cette adresse email n\'est pas valide.';
+  if (has('rate limit') || has('you can only request this after') || has('too many')) return 'Trop de tentatives. Patientez une minute avant de réessayer.';
+  if (has('failed to fetch') || has('networkerror') || has('network request failed')) return 'Connexion impossible. Vérifiez votre accès à Internet.';
+  if (has('weak password')) return 'Mot de passe trop simple. Ajoutez des chiffres ou des majuscules.';
+  return 'Une erreur est survenue. Réessayez dans un instant.';
+}
+
 async function createAccountFromSettings() {
   const name = (document.getElementById('s-signup-name')?.value || '').trim();
   const email = (document.getElementById('s-signup-email')?.value || '').trim();
@@ -2257,7 +2282,7 @@ async function createAccountFromSettings() {
       showErr('✅ Compte créé ! Vérifiez votre boîte email, confirmez, puis connectez-vous.');
     }
   } catch (e) {
-    showErr('⚠️ ' + (e.message || 'Erreur lors de la création du compte.'));
+    showErr('⚠️ ' + authErrorFr(e.message));
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '💾 Sauvegarder mon compte'; }
   }
@@ -2598,7 +2623,7 @@ async function forgotPassword() {
     if (error) throw error;
     showSupaError('✅ Email de réinitialisation envoyé à ' + email + '. Vérifiez votre boîte de réception.');
   } catch (e) {
-    showSupaError('⚠️ ' + (e.message || 'Erreur lors de l\'envoi.'));
+    showSupaError('⚠️ ' + authErrorFr(e.message));
   }
 }
 
@@ -2639,8 +2664,7 @@ async function submitSupaAuth() {
       await afterSupaAuth(data.user);
     }
   } catch(e) {
-    const MSGS = { 'Invalid login credentials':'Email ou mot de passe incorrect.', 'Email not confirmed':'Confirmez votre email d\'abord.', 'User already registered':'Email déjà utilisé — connectez-vous.', 'Password should be at least 6 characters':'Mot de passe min. 6 caractères.' };
-    showSupaError(MSGS[e.message] || e.message || 'Erreur de connexion.');
+    showSupaError(authErrorFr(e.message));
     if (btn) { btn.disabled = false; switchAuthTab(_supaMode); }
   }
 }
