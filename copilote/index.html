@@ -1680,14 +1680,9 @@ async function sendMessage() {
 
   const isVision = S.mode === 'vision';
 
-  // Vision without file → redirect
-  if (isVision && !hasFile) {
-    if (text) addMsgUI('user', text);
-    input.value = ''; autoResize(input);
-    showTyping(); await sleep(700); removeTyping();
-    addMsgUI('assistant', R.visionNoFile());
-    return;
-  }
+  // Mode Vision sans fichier : ce n'est pas une erreur. La demande part a
+  // l'agent, qui peut avoir besoin d'une action payante sans fichier joint
+  // (navigation web, redaction d'un document...).
 
   if (isVision && S.tokens <= 0) { showTokenModal(); return; }
 
@@ -1945,6 +1940,8 @@ function switchTab(tab) {
   }
 }
 function filterConn(type, el) {
+  if (type === 'connected') type = 'on';
+  if (type === 'disconnected' || type === 'not_connected') type = 'off';
   document.querySelectorAll('#conn-filter .sradio-btn').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
   document.querySelectorAll('#conn-list .conn-row').forEach(row=>{
