@@ -642,7 +642,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
           <div class="token-bar-bg"><div class="token-bar-fill" id="token-bar" style="width:84%"></div></div>
           <div class="token-stats">
             <div><div class="token-stat-val" id="panel-tokens">42</div><div class="token-stat-lbl">Disponibles</div></div>
-            <div style="text-align:right"><div class="token-stat-val" style="color:var(--text-secondary)" id="panel-max">50</div><div class="token-stat-lbl">Max</div></div>
+            <div style="text-align:right"><div class="token-stat-val" style="color:var(--text-secondary)" id="panel-max">0</div><div class="token-stat-lbl">Consommés</div></div>
           </div>
         </div>
         <div class="result-card" id="result-card">
@@ -1757,13 +1757,22 @@ function hideLoadingOverlay() { clearInterval(ltimer); document.getElementById('
 
 /* ═══ TOKEN ═════════════════════════════════════════════════════════ */
 function consumeToken() { if(S.tokens<=0){showTokenModal();return false;} S.tokens=Math.max(0,S.tokens-1); updateTokenUI(); return true; }
+// Il n'y a AUCUN plafond de jetons : le client peut en acheter autant qu'il veut.
+// La reference de la jauge est simplement le solde le plus haut qu'il ait eu,
+// ce qui montre "ce qu'il lui reste sur ce qu'il a rechargé".
+function tokenPeak() {
+  const stored = Number(DB.prefs().tokenPeak || 0);
+  const peak = Math.max(stored, S.tokens, 1);
+  if (peak > stored) DB.savePref('tokenPeak', peak);
+  return peak;
+}
 function updateTokenUI() {
-  const t=S.tokens, m=S.maxTokens;
+  const t = S.tokens, peak = tokenPeak();
   document.getElementById('hdr-tokens').textContent=t;
   document.getElementById('panel-tokens').textContent=t;
-  const pm=document.getElementById('panel-max'); if(pm) pm.textContent=m;
+  const pm=document.getElementById('panel-max'); if(pm) pm.textContent=Math.max(0, peak - t);
   const el=document.getElementById('s-token-big'); if(el)el.textContent=t;
-  document.getElementById('token-bar').style.width=Math.max(0,Math.min(100,t/m*100))+'%';
+  document.getElementById('token-bar').style.width=Math.max(0,Math.min(100,t/peak*100))+'%';
 }
 function showTokenModal() { document.getElementById('modal-tokens').classList.add('open'); }
 function closeTokenModal() { document.getElementById('modal-tokens').classList.remove('open'); }
@@ -1820,7 +1829,7 @@ function switchTab(tab) {
     document.getElementById('stat-sessions').textContent=all.filter(s=>!s.archived).length;
     document.getElementById('stat-msgs').textContent=all.reduce((n,s)=>n+(s.messages?.length||0),0);
     document.getElementById('stat-docs').textContent=all.reduce((n,s)=>n+(s.messages?.filter(m=>m.text?.includes('📎')).length||0),0);
-    document.getElementById('stat-tokens').textContent=Math.max(0,S.maxTokens-S.tokens);
+    document.getElementById('stat-tokens').textContent=Math.max(0,tokenPeak()-S.tokens);
   }
 }
 function filterConn(type, el) {
@@ -1923,12 +1932,12 @@ function updateStats() {
   if(statM) statM.textContent = totalMsgs;
   const totalDocs = all.reduce((n,s)=>n+(s.messages?.filter(m=>m.role==='user'&&m.text?.includes('📎')).length||0),0);
   if(statD) statD.textContent = totalDocs;
-  const usedTokens = Math.max(0, S.maxTokens - S.tokens);
+  const usedTokens = Math.max(0, tokenPeak() - S.tokens);
   if(statT) statT.textContent = usedTokens;
   const bar = document.getElementById('usage-bar');
-  if(bar) bar.style.width = Math.min(100, Math.round(usedTokens/S.maxTokens*100))+'%';
+  if(bar) bar.style.width = Math.min(100, Math.round(usedTokens/tokenPeak()*100))+'%';
   const ul = document.getElementById('usage-label'); if(ul) ul.textContent = usedTokens+' jetons utilisés';
-  const uml = document.getElementById('usage-max-label'); if(uml) uml.textContent = S.maxTokens+' max';
+  const uml = document.getElementById('usage-max-label'); if(uml) uml.textContent = S.tokens+' disponibles';
 }
 
 function savePref(k,v) { DB.savePref(k,v); }
