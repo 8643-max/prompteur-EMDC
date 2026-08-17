@@ -1551,7 +1551,7 @@ async function analyzeFileWithAgent(file, question, sessionId) {
 
   const sid = sessionId || S.currentSessionId;
   const ctrl = taskStart(sid, 'analyse');
-  const tid = setTimeout(() => ctrl.abort(), 120000);
+  const tid = setTimeout(() => ctrl.abort(), 300000);
   try {
     const r = await fetch(ASSISTANT_URL, {
       method: 'POST',
@@ -1747,7 +1747,7 @@ async function sendMessage() {
     let ctrl = null, tid = null;
     try {
       ctrl = taskStart(taskSid, 'conversation');
-      tid = setTimeout(() => ctrl.abort(), 120000);
+      tid = setTimeout(() => ctrl.abort(), 300000);
       const whHeaders = { 'Content-Type': 'application/json' };
       if (prefs.webhookHeaderName && prefs.webhookHeaderValue) whHeaders[prefs.webhookHeaderName] = prefs.webhookHeaderValue;
       const r = await fetch(webhookUrl, {
