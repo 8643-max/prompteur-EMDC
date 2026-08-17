@@ -564,6 +564,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
           <div class="tool-item" id="tool-presentation" onclick="selectTool('presentation','📊','Créer une présentation')">
             <span class="tool-icon">📊</span> Créer une présentation
           </div>
+          <div id="tools-extra" style="display:none">
           <div class="tool-item" id="tool-recherche" onclick="selectTool('recherche','🔍','Recherche documentaire')">
             <span class="tool-icon">🔍</span> Recherche documentaire
           </div>
@@ -575,6 +576,10 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
           </div>
           <div class="tool-item" id="tool-navigation" onclick="selectTool('navigation','🌐','Navigation Web')">
             <span class="tool-icon">🌐</span> Navigation Web
+          </div>
+          </div>
+          <div class="tool-item" id="tools-toggle" onclick="toggleMoreTools()" style="color:var(--gold);font-size:12px">
+            <span class="tool-icon">▾</span> <span id="tools-toggle-label">Voir plus</span>
           </div>
         </div>
         <div class="sidebar-divider"></div>
@@ -1320,7 +1325,22 @@ function fmtDate(ts) {
 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 /* ═══ TOOLS / WELCOME ═══════════════════════════════════════════════ */
+function toggleMoreTools(force) {
+  const box = document.getElementById('tools-extra');
+  const lbl = document.getElementById('tools-toggle-label');
+  const tog = document.getElementById('tools-toggle');
+  if (!box) return;
+  const open = force === undefined ? box.style.display === 'none' : !!force;
+  box.style.display = open ? '' : 'none';
+  if (lbl) lbl.textContent = open ? 'Voir moins' : 'Voir plus';
+  if (tog) tog.querySelector('.tool-icon').textContent = open ? '\u25b4' : '\u25be';
+  DB.savePref('toolsExpanded', open);
+}
+
 function selectTool(tool, icon, label) {
+  // Si l'outil choisi est dans la partie repliee, on la deplie.
+  const el0 = document.getElementById('tool-' + tool);
+  if (el0 && el0.closest('#tools-extra')) toggleMoreTools(true);
   S.currentTool = tool;
   document.querySelectorAll('.tool-item').forEach(el => el.classList.remove('active'));
   const el = document.getElementById('tool-' + tool);
@@ -2793,6 +2813,7 @@ document.addEventListener('click', e=>{
 // Init
 window.addEventListener('DOMContentLoaded', ()=>{
   document.querySelectorAll('.logo-slot').forEach(el => el.src = LOGO);
+  toggleMoreTools(!!DB.prefs().toolsExpanded);
   // Coller une image n'importe ou dans l'app (pas seulement dans la zone d'ecriture)
   document.addEventListener('paste', (e) => {
     if (e.defaultPrevented) return;
