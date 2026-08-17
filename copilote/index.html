@@ -539,6 +539,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
         <div class="dropdown-item" id="dd-login" onclick="openLoginModal()" style="color:var(--gold);font-weight:600">🔑 Se connecter / Créer un compte</div>
         <div class="dropdown-item" onclick="openSettings('general')">⚙️ Paramètres</div>
         <div class="dropdown-item" onclick="openSettings('facturation')">💳 Facturation</div>
+        <div class="dropdown-item" id="dd-switch" onclick="switchAdminAccount()" style="display:none;color:var(--gold)">🔄 Basculer sur mon autre compte</div>
         <div class="dropdown-item danger" id="dd-logout" onclick="doLogout()">🚪 Déconnexion</div>
       </div>
     </div>
@@ -625,6 +626,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
             <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.docx,.doc,.pptx,.ppt,.xlsx,.xls" onchange="onFileSelect(event)" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0" title="Joindre un fichier"/>
           </div>
           <textarea id="chat-input" rows="1" placeholder="Posez une question..." onkeydown="handleKey(event)" oninput="autoResize(this)" onpaste="onPasteFile(event)"></textarea>
+          <span id="tasks-indicator" style="display:none;font-size:11px;color:var(--gold);align-self:center;margin-right:6px;white-space:nowrap"></span>
           <button class="btn-send" id="btn-send" onclick="sendMessage()">🚀</button>
           <button class="btn-send" id="btn-stop" onclick="stopAgent()" title="Arrêter la tâche en cours" style="display:none;background:#8b2020;border-color:#a33">⏹</button>
         </div>
@@ -1158,10 +1160,13 @@ function commitSession(firstMsg) {
   renderHistory();
 }
 
-function saveMessageToSession(role, text) {
-  if (!S.memoryEnabled || !S.currentSessionId) return;
+// targetId permet d'ecrire dans une conversation qui n'est plus a l'ecran
+// (tache lancee, puis basculement vers un autre outil ou une autre conversation).
+function saveMessageToSession(role, text, targetId) {
+  const sid = targetId || S.currentSessionId;
+  if (!S.memoryEnabled || !sid) return;
   const sessions = DB.sessions();
-  const idx = sessions.findIndex(s => s.id === S.currentSessionId);
+  const idx = sessions.findIndex(s => s.id === sid);
   if (idx === -1) return;
   sessions[idx].messages.push({ role, text, ts: Date.now() });
   sessions[idx].lastUsedAt = Date.now();
@@ -1174,6 +1179,7 @@ function loadSession(id) {
   const session = sessions.find(s => s.id === id);
   if (!session) return;
   S.currentSessionId = id; S.pendingSession = null;
+  refreshBusyUI();
   S.currentTool = session.tool;
   // update UI tool selection
   document.querySelectorAll('.tool-item').forEach(el => el.classList.remove('active'));
@@ -1220,7 +1226,7 @@ function buildHistoryItem(s) {
   const dateStr = fmtDate(s.lastUsedAt);
   div.innerHTML = `
     <span class="h-icon">${cfg.icon}</span>
-    <span class="h-title">${esc(s.title)}</span>
+    <span class="h-title">${taskIsRunning(s.id) ? '\u23f3 ' : ''}${esc(s.title)}</span>
     ${s.pinned ? '<span class="h-pin">📌</span>' : ''}
     <span class="h-date">${dateStr}</span>
     <button class="btn-ctx" onclick="toggleCtx('${s.id}',event)" title="Options">⋮</button>
@@ -1379,6 +1385,48 @@ function addMsgUI(role, text, save = true) {
   if (save && S.currentSessionId) saveMessageToSession(role, text);
 }
 
+/* ═══ TACHES PARALLELES ═════════════════════════════════════════════
+   Chaque conversation porte sa propre tache. On peut en lancer une,
+   basculer d'outil ou de conversation, en lancer une autre : chaque
+   reponse revient se ranger dans SA conversation d'origine.          */
+const _tasks = new Map(); // sessionId -> { ctrl, stoppedByUser, label }
+
+function taskStart(sessionId, label) {
+  const ctrl = new AbortController();
+  _tasks.set(sessionId, { ctrl, stoppedByUser: false, label: label || 'tâche' });
+  refreshBusyUI();
+  return ctrl;
+}
+function taskEnd(sessionId) { _tasks.delete(sessionId); refreshBusyUI(); renderHistory(); }
+function taskOf(sessionId) { return _tasks.get(sessionId); }
+function taskIsRunning(sessionId) { return _tasks.has(sessionId); }
+
+// Le bouton d'arret ne concerne que la conversation affichee.
+function refreshBusyUI() {
+  const running = taskIsRunning(S.currentSessionId);
+  const s = document.getElementById('btn-send');
+  const k = document.getElementById('btn-stop');
+  if (s) s.style.display = running ? 'none' : '';
+  if (k) k.style.display = running ? '' : 'none';
+  const n = _tasks.size;
+  const ind = document.getElementById('tasks-indicator');
+  if (ind) {
+    ind.style.display = n > 1 ? '' : 'none';
+    ind.textContent = '⏳ ' + n + ' tâches en cours';
+  }
+}
+
+// Depose la reponse dans la bonne conversation, meme si le client est parti ailleurs.
+function deliverToSession(sessionId, text) {
+  if (S.currentSessionId === sessionId) { addMsgUI('assistant', text); return; }
+  saveMessageToSession('assistant', text, sessionId);
+  const sessions = DB.sessions();
+  const s = sessions.find(x => x.id === sessionId);
+  showToast('✅ Réponse reçue : ' + ((s && s.title) || 'autre conversation'), 3500);
+  playNotifSound();
+  renderHistory();
+}
+
 function markdownLite(t) { return t.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/`(.+?)`/g,'<code>$1</code>').replace(/\n/g,'<br>'); }
 
 function showTyping() {
@@ -1412,23 +1460,15 @@ function escapeHtml(s) {
 }
 
 /* ═══ CONTROLE DE L'AGENT (arret a la demande du client) ════════════ */
-let _activeCtrl = null;      // requete en cours, annulable
-let _userStopped = false;    // l'arret vient-il du client ?
-
-function setAgentBusy(on) {
-  const s = document.getElementById('btn-send');
-  const k = document.getElementById('btn-stop');
-  if (s) s.style.display = on ? 'none' : '';
-  if (k) k.style.display = on ? '' : 'none';
-}
-
-// Le client reprend la main : on interrompt la tache en cours.
+// Le client reprend la main sur la conversation affichee uniquement :
+// les taches des autres conversations continuent leur route.
 function stopAgent() {
-  if (!_activeCtrl) return;
-  _userStopped = true;
-  try { _activeCtrl.abort(); } catch (_) {}
-  _activeCtrl = null;
-  setAgentBusy(false);
+  const sid = S.currentSessionId;
+  const t = taskOf(sid);
+  if (!t) return;
+  t.stoppedByUser = true;
+  try { t.ctrl.abort(); } catch (_) {}
+  taskEnd(sid);
   removeTyping();
   hideLoadingOverlay();
   addMsgUI('assistant', "⏹ **Tâche interrompue à votre demande.**\n\nJe me suis arrêté là où j'en étais. Rien de plus n'a été effectué.\n\nVous pouvez maintenant me donner de nouvelles consignes, me demander de reprendre autrement, ou d'annuler ce qui a déjà été fait.");
@@ -1436,7 +1476,7 @@ function stopAgent() {
 
 // Envoie le fichier a l'agent pour une VRAIE analyse. Rien n'est stocke : le
 // fichier part en direct, il n'est ecrit nulle part.
-async function analyzeFileWithAgent(file, question) {
+async function analyzeFileWithAgent(file, question, sessionId) {
   if (!file) return { error: "Aucun fichier joint." };
   const MAX = 8 * 1024 * 1024;
   if (file.size > MAX) return { error: "Fichier trop volumineux (8 Mo maximum)." };
@@ -1451,8 +1491,8 @@ async function analyzeFileWithAgent(file, question) {
     fr.readAsDataURL(file);
   });
 
-  const ctrl = new AbortController();
-  _activeCtrl = ctrl; _userStopped = false; setAgentBusy(true);
+  const sid = sessionId || S.currentSessionId;
+  const ctrl = taskStart(sid, 'analyse');
   const tid = setTimeout(() => ctrl.abort(), 120000);
   try {
     const r = await fetch(ASSISTANT_URL, {
@@ -1462,7 +1502,7 @@ async function analyzeFileWithAgent(file, question) {
         action: 'analyze_document',
         user_id: S.user?.id || S.user?.email || 'guest',
         email: S.user?.email || '',
-        session_id: S.currentSessionId || ('guest-' + Date.now().toString(36)),
+        session_id: sid || ('guest-' + Date.now().toString(36)),
         file_type: fileType,
         file_name: file.name,
         mime_type: file.type || (fileType === 'pdf' ? 'application/pdf' : 'image/png'),
@@ -1481,10 +1521,11 @@ async function analyzeFileWithAgent(file, question) {
     return { error: null };
   } catch (e) {
     clearTimeout(tid);
-    if (_userStopped) return { stopped: true };
+    const t = taskOf(sid);
+    if (t && t.stoppedByUser) return { stopped: true };
     return { error: e.name === 'AbortError' ? "L'analyse a pris trop de temps. Réessayez avec un fichier plus léger." : null };
   } finally {
-    _activeCtrl = null; setAgentBusy(false);
+    clearTimeout(tid); taskEnd(sid);
   }
 }
 
@@ -1611,23 +1652,25 @@ async function sendMessage() {
   input.value = ''; autoResize(input);
   const fname = S.pendingFile?.name;
   const pfile = S.pendingFile;
+  // Conversation d'origine : la reponse y reviendra meme si le client bascule ailleurs.
+  const taskSid = S.currentSessionId;
   if (hasFile) removeFile();
 
   if (isVision) {
     showLoadingOverlay();
     let out;
     try {
-      out = await analyzeFileWithAgent(pfile, text);
+      out = await analyzeFileWithAgent(pfile, text, taskSid);
     } catch (e) {
       out = null;
     }
     hideLoadingOverlay();
-    if (out && out.stopped) { _userStopped = false; return; } // arret client : message deja affiche
+    if (out && out.stopped) return; // arret client : message deja affiche
     if (out && out.extraction) {
-      showResultCard(fname, (fname.split('.').pop() || '').toLowerCase(), out.extraction);
-      addMsgUI('assistant', out.extraction);
+      if (S.currentSessionId === taskSid) showResultCard(fname, (fname.split('.').pop() || '').toLowerCase(), out.extraction);
+      deliverToSession(taskSid, out.extraction);
     } else {
-      addMsgUI('assistant', (out && out.error) || "Je n'ai pas réussi à analyser ce fichier. Réessayez dans un instant, ou envoyez-le dans un autre format.");
+      deliverToSession(taskSid, (out && out.error) || "Je n'ai pas réussi à analyser ce fichier. Réessayez dans un instant, ou envoyez-le dans un autre format.");
     }
     setTimeout(refreshSupaTokens, 800);
     return;
@@ -1645,8 +1688,7 @@ async function sendMessage() {
   let resp;
   if (webhookUrl) {
     try {
-      const ctrl = new AbortController();
-      _activeCtrl = ctrl; _userStopped = false; setAgentBusy(true);
+      const ctrl = taskStart(taskSid, 'conversation');
       const tid = setTimeout(() => ctrl.abort(), 120000);
       const whHeaders = { 'Content-Type': 'application/json' };
       if (prefs.webhookHeaderName && prefs.webhookHeaderValue) whHeaders[prefs.webhookHeaderName] = prefs.webhookHeaderValue;
@@ -1674,11 +1716,12 @@ async function sendMessage() {
         }
       }
     } catch(e) {
-      if (_userStopped) { _userStopped = false; return; } // arret demande : message deja affiche
+      const t = taskOf(taskSid);
+      if (t && t.stoppedByUser) return; // arret demande : message deja affiche
       if (e.name === 'AbortError') { resp = "La tâche prend trop de temps. Réessayez, ou reformulez votre demande."; }
       else { resp = null; }
     } finally {
-      _activeCtrl = null; setAgentBusy(false);
+      clearTimeout(tid); taskEnd(taskSid);
     }
   }
 
@@ -1688,7 +1731,7 @@ async function sendMessage() {
   }
 
   removeTyping();
-  addMsgUI('assistant', resp);
+  deliverToSession(taskSid, resp);
   setTimeout(refreshSupaTokens, 800);
 }
 
@@ -2447,13 +2490,49 @@ function newSession() {
   document.getElementById('preview-empty').style.display='';
   document.getElementById('chat-title').textContent='Nouvelle session';
   removeFile(); setMode('standard');
-  startNewSession(); renderHistory();
+  startNewSession(); renderHistory(); refreshBusyUI();
 }
 
 /* ═══ MISC ACTIONS ══════════════════════════════════════════════════ */
 function openDrive() { addMsgUI('assistant','🔗 En production, ce bouton ouvre le document directement dans **Google Drive** après connexion du workflow EMDC.'); }
 function downloadFile() { addMsgUI('assistant','⬇ Le téléchargement est disponible en production après connexion du workflow EMDC.'); }
-function toggleAvatarMenu() { document.getElementById('avatar-menu').classList.toggle('open'); }
+/* ═══ BASCULE ENTRE COMPTES (reserve a l'administrateur EMDC) ═══════
+   Aucun mot de passe n'est conserve : on deconnecte proprement puis on
+   pre-remplit l'email de l'autre compte sur l'ecran de connexion.     */
+const ADMIN_ACCOUNTS = ['eldjidiallo8643@gmail.com', 'eldjidiallo76032@gmail.com'];
+function isAdminAccount(email) { return ADMIN_ACCOUNTS.includes((email || '').toLowerCase()); }
+
+function updateAdminSwitchUI() {
+  const el = document.getElementById('dd-switch');
+  if (!el) return;
+  const email = (S.user?.email || '').toLowerCase();
+  const show = isAdminAccount(email);
+  el.style.display = show ? '' : 'none';
+  if (show) {
+    const other = ADMIN_ACCOUNTS.find(a => a !== email);
+    el.textContent = '🔄 Basculer sur ' + (other || 'mon autre compte');
+  }
+}
+
+async function switchAdminAccount() {
+  const email = (S.user?.email || '').toLowerCase();
+  if (!isAdminAccount(email)) return;
+  const other = ADMIN_ACCOUNTS.find(a => a !== email);
+  if (!other) return;
+  if (_tasks.size > 0 && !confirm(_tasks.size + ' tâche(s) sont en cours. Elles seront interrompues. Continuer ?')) return;
+  _tasks.forEach(t => { try { t.ctrl.abort(); } catch (_) {} });
+  _tasks.clear();
+  document.getElementById('avatar-menu').classList.remove('open');
+  doLogout();
+  openLoginModal();
+  const f = document.getElementById('supa-email');
+  if (f) { f.value = other; f.dispatchEvent(new Event('input')); }
+  const p = document.getElementById('supa-pass');
+  if (p) setTimeout(() => p.focus(), 150);
+  showToast('🔄 Connectez-vous avec ' + other, 4000);
+}
+
+function toggleAvatarMenu() { updateAdminSwitchUI(); document.getElementById('avatar-menu').classList.toggle('open'); }
 document.addEventListener('click', e=>{
   if(!e.target.closest('#avatar-btn')&&!e.target.closest('#avatar-menu')) document.getElementById('avatar-menu')?.classList.remove('open');
 });
