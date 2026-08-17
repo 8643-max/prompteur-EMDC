@@ -1,0 +1,34 @@
+═══════════════════════════════════════════
+  EMDC Copilote — Agent Local
+  Vos documents restent sur VOTRE ordinateur
+═══════════════════════════════════════════
+
+INSTALLATION (une seule fois) :
+
+  Windows :
+    1. Double-cliquez sur "install.bat"
+    2. Si un message dit que "Node.js" est manquant :
+       - Allez sur https://nodejs.org
+       - Téléchargez et installez la version "LTS"
+       - Recommencez l'étape 1
+    3. Une fenêtre noire va rester ouverte : c'est normal,
+       c'est votre agent qui fonctionne. Ne la fermez pas.
+
+  Mac / Linux :
+    1. Ouvrez un Terminal dans ce dossier
+    2. Tapez : ./install.sh
+
+C'est tout ! Vous pouvez maintenant utiliser EMDC Copilote
+normalement — vos documents ne quittent jamais votre PC.
+
+───────────────────────────────────────────
+
+DÉMARRAGE AUTOMATIQUE AVEC WINDOWS (facultatif) :
+  1. Clic droit sur "start.bat" → Créer un raccourci
+  2. Appuyez sur les touches Windows + R, tapez : shell:startup
+  3. Déplacez le raccourci dans le dossier qui s'ouvre
+
+───────────────────────────────────────────
+
+BESOIN D'AIDE ?
+  contact@emdcconsulting.com

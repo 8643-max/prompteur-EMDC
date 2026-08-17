@@ -1,0 +1,6 @@
+node_modules/
+dist/
+bin/
+storage/
+agent.config.json
+*.zip

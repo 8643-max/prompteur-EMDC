@@ -1,0 +1,14 @@
+{
+  "name": "emdc-agent-local",
+  "version": "1.0.0",
+  "description": "Agent local EMDC Copilote — garde les documents du client sur son PC tout en restant piloté par le cloud EMDC via un tunnel sécurisé.",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "install-tunnel": "node scripts/download-cloudflared.js",
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
