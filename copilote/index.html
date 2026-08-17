@@ -474,6 +474,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
         <div class="pw-wrap"><input type="password" id="supa-pass" class="sinput" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitSupaAuth()"/>
         <button class="pw-eye" type="button" onclick="const i=document.getElementById('supa-pass');i.type=i.type==='password'?'text':'password'">👁</button></div>
       </div>
+      <div style="text-align:right;margin:-6px 0 10px" id="supa-forgot-wrap"><button onclick="forgotPassword()" style="background:none;border:none;color:var(--text-muted);font-size:11px;cursor:pointer;text-decoration:underline;padding:0">Mot de passe oublié ?</button></div>
       <div id="supa-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px;text-align:center;padding:6px;background:var(--red-dim);border-radius:6px"></div>
       <button class="btn-login" id="supa-submit-btn" onclick="submitSupaAuth()">Se connecter →</button>
       <p class="login-note">🔒 Connexion sécurisée — 10 jetons offerts à l'inscription</p>
@@ -570,6 +571,9 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
           </div>
           <div class="tool-item" id="tool-documents" onclick="selectTool('documents','📚','Base documentaire')">
             <span class="tool-icon">📚</span> Base documentaire
+          </div>
+          <div class="tool-item" id="tool-navigation" onclick="selectTool('navigation','🌐','Navigation Web')">
+            <span class="tool-icon">🌐</span> Navigation Web
           </div>
         </div>
         <div class="sidebar-divider"></div>
@@ -763,40 +767,53 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 
     <!-- COMPTE -->
     <div class="settings-tab-content" id="stab-compte">
-      <div class="sgroup">
-        <div class="sgroup-title">Mon profil</div>
-        <div class="saccount-photo">
-          <div class="saccount-photo-circle" id="saccount-photo-circle" onclick="document.getElementById('saccount-photo-input').click()" title="Changer la photo">
-            <span id="saccount-photo-initials"></span>
-          </div>
-          <input type="file" id="saccount-photo-input" accept="image/*" style="display:none" onchange="handlePhotoUpload(this,'saccount-photo-circle');savePref('profilePhoto',_profilePhotoB64);updateAvatarUI()">
-          <div class="saccount-photo-info">
-            <div class="saccount-photo-label">Photo de profil</div>
-            <button class="saccount-photo-btn" onclick="document.getElementById('saccount-photo-input').click()">Changer la photo</button>
-          </div>
+      <!-- Invité : formulaire de création de compte -->
+      <div id="compte-guest-section">
+        <div class="sgroup">
+          <div class="sgroup-title">Créer mon compte</div>
+          <div class="sfield"><label>Nom d'affichage</label><input class="sinput" id="s-signup-name" placeholder="Votre nom"/></div>
+          <div class="sfield"><label>E-mail</label><input class="sinput" id="s-signup-email" type="email" placeholder="vous@exemple.com"/></div>
+          <div class="sfield"><label>Mot de passe</label><div class="pw-wrap"><input class="sinput" type="password" id="s-signup-pass" placeholder="••••••••"/><button class="pw-eye" type="button" onclick="togglePw('s-signup-pass',this)" title="Afficher/Masquer">👁</button></div></div>
+          <div class="sfield"><label>Confirmer le mot de passe</label><div class="pw-wrap"><input class="sinput" type="password" id="s-signup-pass2" placeholder="••••••••"/><button class="pw-eye" type="button" onclick="togglePw('s-signup-pass2',this)" title="Afficher/Masquer">👁</button></div></div>
+          <button class="sbtn" style="width:100%;margin-top:4px" id="s-signup-btn" onclick="createAccountFromSettings()">💾 Sauvegarder mon compte</button>
+          <div id="s-signup-error" style="display:none;color:var(--red);font-size:12px;margin-top:6px"></div>
+          <div class="sinfo" style="margin-top:10px">🎁 10 jetons offerts à la création de votre compte. Déjà un compte ? <a href="#" onclick="closeSettings();openLoginModal();return false" style="color:var(--gold)">Connectez-vous ici</a>.</div>
         </div>
-        <div class="sfield"><label>Nom d'affichage</label><input class="sinput" id="s-name2" placeholder="Votre nom"/></div>
-        <button class="sbtn" style="width:100%;margin-top:4px" onclick="saveDisplayName()">💾 Sauvegarder le nom</button>
-        <div class="sfield" style="margin-top:10px"><label>E-mail</label><input class="sinput" id="s-email2" readonly style="opacity:.6;cursor:not-allowed"/></div>
       </div>
-      <div class="sgroup">
-        <div class="sgroup-title">Mot de passe</div>
-        <div class="sfield"><label>Mot de passe actuel</label><div class="pw-wrap"><input class="sinput" type="password" id="s-pw-old2" placeholder="••••••••"/><button class="pw-eye" type="button" onclick="togglePw('s-pw-old2',this)" title="Afficher/Masquer">👁</button></div></div>
-        <div class="sfield"><label>Nouveau mot de passe</label><div class="pw-wrap"><input class="sinput" type="password" id="s-pw-new2" placeholder="••••••••"/><button class="pw-eye" type="button" onclick="togglePw('s-pw-new2',this)" title="Afficher/Masquer">👁</button></div></div>
-        <div class="sfield"><label>Confirmer</label><div class="pw-wrap"><input class="sinput" type="password" id="s-pw-confirm2" placeholder="••••••••"/><button class="pw-eye" type="button" onclick="togglePw('s-pw-confirm2',this)" title="Afficher/Masquer">👁</button></div></div>
-        <button class="sbtn" onclick="switchTab('securite');setTimeout(()=>document.getElementById('s-pw-old')?.focus(),50)" style="width:100%;margin-top:4px">🔒 Modifier le mot de passe dans Confidentialité →</button>
-      </div>
-      <div class="sgroup">
-        <div class="sgroup-title">Sessions actives</div>
-        <div class="s-token-hist">
-          <div class="s-token-hist-row"><span>💻 Cette session</span><span class="amount">Active maintenant</span></div>
+      <!-- Compte actif -->
+      <div id="compte-account-section">
+        <div class="sgroup">
+          <div class="sgroup-title">Mon profil</div>
+          <div class="saccount-photo">
+            <div class="saccount-photo-circle" id="saccount-photo-circle" onclick="document.getElementById('saccount-photo-input').click()" title="Changer la photo">
+              <span id="saccount-photo-initials"></span>
+            </div>
+            <input type="file" id="saccount-photo-input" accept="image/*" style="display:none" onchange="handlePhotoUpload(this,'saccount-photo-circle');savePref('profilePhoto',_profilePhotoB64);updateAvatarUI()">
+            <div class="saccount-photo-info">
+              <div class="saccount-photo-label">Photo de profil</div>
+              <button class="saccount-photo-btn" onclick="document.getElementById('saccount-photo-input').click()">Changer la photo</button>
+            </div>
+          </div>
+          <div class="sfield"><label>Nom d'affichage</label><input class="sinput" id="s-name2" placeholder="Votre nom"/></div>
+          <div class="sfield" style="margin-top:10px"><label>E-mail</label><input class="sinput" id="s-email2" readonly style="opacity:.6;cursor:not-allowed"/></div>
+          <button class="sbtn" style="width:100%;margin-top:10px" onclick="saveDisplayName()">💾 Sauvegarder mon compte</button>
         </div>
-        <button class="sbtn danger" onclick="logoutAll()" style="width:100%;margin-top:8px">Déconnecter toutes les sessions</button>
-      </div>
-      <div class="sgroup" style="border:1px solid var(--red);border-radius:10px;padding:14px">
-        <div class="sgroup-title" style="color:var(--red)">Zone de danger</div>
-        <div class="sinfo" style="margin-bottom:10px">⚠️ La suppression du compte efface définitivement votre profil, vos préférences et tout votre historique de l'appareil.</div>
-        <button class="sbtn danger" onclick="deleteAccount()" style="width:100%">🗑️ Supprimer mon compte</button>
+        <div class="sgroup">
+          <div class="sgroup-title">Mot de passe</div>
+          <button class="sbtn" onclick="switchTab('securite');setTimeout(()=>document.getElementById('s-pw-old')?.focus(),50)" style="width:100%;margin-top:4px">🔒 Modifier le mot de passe dans Confidentialité →</button>
+        </div>
+        <div class="sgroup">
+          <div class="sgroup-title">Sessions actives</div>
+          <div class="s-token-hist">
+            <div class="s-token-hist-row"><span>💻 Cette session</span><span class="amount">Active maintenant</span></div>
+          </div>
+          <button class="sbtn danger" onclick="logoutAll()" style="width:100%;margin-top:8px">Déconnecter toutes les sessions</button>
+        </div>
+        <div class="sgroup" style="border:1px solid var(--red);border-radius:10px;padding:14px">
+          <div class="sgroup-title" style="color:var(--red)">Zone de danger</div>
+          <div class="sinfo" style="margin-bottom:10px">⚠️ La suppression du compte efface définitivement votre profil, vos préférences et tout votre historique de l'appareil.</div>
+          <button class="sbtn danger" onclick="deleteAccount()" style="width:100%">🗑️ Supprimer mon compte</button>
+        </div>
       </div>
     </div>
 
@@ -835,9 +852,9 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
     <!-- CONNEXIONS -->
     <div class="settings-tab-content" id="stab-connexions">
       <div class="sgroup">
-        <div class="sgroup-title">Workflow IA (n8n)</div>
+        <div class="sgroup-title">Moteur IA (interne EMDC)</div>
         <div class="sfield"><label>URL du webhook</label><input class="sinput" id="s-webhook" placeholder="https://..." oninput="savePref('webhookUrl',this.value)"/></div>
-        <div class="sfield"><label>Header d'auth (optionnel)</label><input class="sinput" id="s-webhook-header-name" placeholder="X-Auth-Header" style="margin-bottom:5px" oninput="savePref('webhookHeaderName',this.value)"/><input class="sinput" id="s-webhook-header-value" type="password" placeholder="valeur secrète..." oninput="savePref('webhookHeaderValue',this.value)"/><small style="color:var(--text-muted);font-size:10px;margin-top:3px;display:block">Laisser vide si n8n n'a pas d'auth sur le webhook</small></div>
+        <div class="sfield"><label>Header d'auth (optionnel)</label><input class="sinput" id="s-webhook-header-name" placeholder="X-Auth-Header" style="margin-bottom:5px" oninput="savePref('webhookHeaderName',this.value)"/><input class="sinput" id="s-webhook-header-value" type="password" placeholder="valeur secrète..." oninput="savePref('webhookHeaderValue',this.value)"/><small style="color:var(--text-muted);font-size:10px;margin-top:3px;display:block">Laisser vide si le service n'a pas d'auth sur le webhook</small></div>
         <div class="srow"><div class="srow-left"><div class="srow-label">Statut</div></div><span class="s-badge-ok" id="s-n8n-status">Connecté</span></div>
         <button class="sbtn" onclick="testWebhook()" style="margin-top:8px;width:100%">🔗 Tester la connexion</button>
       </div>
@@ -899,7 +916,6 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
           <div class="conn-row" data-status="off" id="conn-Dropbox"><span class="conn-row-icon">📦</span><span class="conn-row-name">Dropbox</span><span class="conn-row-type">Web</span><button class="conn-row-btn" onclick="connectService('Dropbox', this)">Connecter</button></div>
           <div class="conn-row" data-status="off" id="conn-WhatsApp"><span class="conn-row-icon">📱</span><span class="conn-row-name">WhatsApp Business</span><span class="conn-row-type">API</span><button class="conn-row-btn" onclick="connectService('WhatsApp', this)">Connecter</button></div>
           <div class="conn-row" data-status="off" id="conn-Stripe"><span class="conn-row-icon">💳</span><span class="conn-row-name">Stripe</span><span class="conn-row-type">Paiement</span><button class="conn-row-btn" onclick="connectService('Stripe', this)">Connecter</button></div>
-          <div class="conn-row" data-status="off" id="conn-n8n"><span class="conn-row-icon">⚙️</span><span class="conn-row-name">n8n</span><span class="conn-row-type">Workflow</span><button class="conn-row-btn" onclick="connectService('n8n', this)">Connecter</button></div>
           <div class="conn-row" data-status="off" id="conn-EMDCChrome"><span class="conn-row-icon">🖥️</span><span class="conn-row-name">EMDC in Chrome</span><span class="conn-row-type">Navigateur</span><button class="conn-row-btn" onclick="connectService('EMDC in Chrome', this)">Installer</button></div>
         </div>
       </div>
@@ -1026,8 +1042,8 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
       <div class="sgroup">
         <div class="sgroup-title">Application</div>
         <div class="srow"><div class="srow-left"><div class="srow-label">Version</div></div><span style="font-size:12px;color:var(--text-muted)">2.0.0-beta</span></div>
-        <div class="srow"><div class="srow-left"><div class="srow-label">Moteur IA</div></div><span style="font-size:12px;color:var(--text-muted)">Claude Opus + Llama 3.3</span></div>
-        <div class="srow"><div class="srow-left"><div class="srow-label">Traitement</div></div><span style="font-size:12px;color:var(--text-muted)">n8n Cloud Automation</span></div>
+        <div class="srow"><div class="srow-left"><div class="srow-label">Moteur IA</div></div><span style="font-size:12px;color:var(--text-muted)">EMDC Intelligence Engine</span></div>
+        <div class="srow"><div class="srow-left"><div class="srow-label">Traitement</div></div><span style="font-size:12px;color:var(--text-muted)">Infrastructure Cloud EMDC Consulting</span></div>
       </div>
       <div class="sinfo">🔒 <strong>Sécurité</strong> : vos documents ne sont jamais stockés de façon permanente. Chaque échange est chiffré en transit. EMDC Consulting IA ne partage vos données avec aucun tiers.<br><br>© 2026 EMDC Consulting IA — Tous droits réservés</div>
       <div class="sgroup" style="margin-top:12px">
@@ -1101,7 +1117,8 @@ const toolConfig = {
   presentation: { icon:'📊', label:'Présentations', welcome:'Mode **Présentation** activé. Décrivez le sujet et je génère vos diapositives Google Slides.', chips:['📊 Nouvelle présentation','🎨 Modifier le style','📋 Ajouter des données'], chipTexts:['Génère une présentation sur la digitalisation des PME','Explique-moi comment modifier le style de mes slides','Ajoute les données de ce fichier à ma présentation'] },
   recherche:    { icon:'🔍', label:'Recherche documentaire', welcome:'Mode **Recherche** activé. Posez votre question et je cherche dans vos documents.', chips:['🔍 Recherche libre','📁 Chercher dans Drive','📝 Résumer'], chipTexts:['Recherche des informations sur la gestion de projet agile','Cherche dans mon Drive les documents sur les fournisseurs','Résume les points clés de ce document'] },
   sheet:        { icon:'📋', label:'Tableaux Google Sheets', welcome:'Mode **Tableau** activé. Décrivez les données à intégrer dans votre Google Sheet.', chips:['📋 Remplir un tableau','📈 Créer des formules','📊 Analyser des données'], chipTexts:['Remplis mon tableau avec ces données','Crée des formules pour calculer les totaux automatiquement','Analyse les données de ce tableau et dis-moi ce que tu vois'] },
-  documents:    { icon:'📚', label:'Base documentaire', welcome:'Mode **Base documentaire** activé. Ajoutez vos fichiers dans le panneau de droite, puis posez des questions sur leur contenu.', chips:['📄 Que contient ma base ?','🔍 Chercher une info','📋 Résumer un doc'], chipTexts:['Que contient ma base documentaire ?','Recherche des informations sur les tarifs','Résume le document le plus récent'] }
+  documents:    { icon:'📚', label:'Base documentaire', welcome:'Mode **Base documentaire** activé. Ajoutez vos fichiers dans le panneau de droite, puis posez des questions sur leur contenu.', chips:['📄 Que contient ma base ?','🔍 Chercher une info','📋 Résumer un doc'], chipTexts:['Que contient ma base documentaire ?','Recherche des informations sur les tarifs','Résume le document le plus récent'] },
+  navigation:   { icon:'🌐', label:'Navigation Web', welcome:'Mode **Navigation Web** activé. Dites-moi quel site visiter et ce qu\'il faut y faire (cliquer, remplir un formulaire, extraire une information, capture d\'écran). Chaque action consomme des jetons.', chips:['🌐 Visiter un site','📝 Remplir un formulaire','🔍 Extraire une info'], chipTexts:['Va sur ce site et dis-moi ce qu\'il propose','Remplis ce formulaire en ligne avec mes informations','Extrait cette information de cette page web'] }
 };
 
 /* ═══ SESSIONS ══════════════════════════════════════════════════════ */
@@ -1684,6 +1701,7 @@ function openSettings(tab='general') {
   if (connexionsTab) connexionsTab.style.display = isAdmin ? '' : 'none';
   if (tab === 'connexions' && !isAdmin) tab = 'general';
   switchTab(tab);
+  updateCompteTabView();
   // populate
   const p = DB.prefs();
   const sn=document.getElementById('s-name'); if(sn) sn.value=p.displayName||S.user?.name||'';
@@ -1735,39 +1753,28 @@ function filterConn(type, el) {
     row.style.display=(type==='all'||type===st)?'':'none';
   });
 }
+const GOOGLE_CONNECTOR_SERVICES = ['Gmail', 'Google Drive', 'Google Calendar', 'Google Sheets'];
+const GOOGLE_OAUTH_CONNECT_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/oauth/google/connect';
+
 async function connectService(name, triggerEl) {
-  const prefs = DB.prefs();
-  const webhookUrl = prefs.webhookUrl || S.webhookUrl;
-  // Find the button: triggerEl is 'this' from the onclick (the button itself)
   const btn = triggerEl || null;
   const row = btn ? btn.closest('.conn-row') : null;
-  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
-  if (!webhookUrl) {
-    if (btn) { btn.textContent = 'Connecter'; btn.disabled = false; }
-    addMsgUI('assistant', `⚠️ **Connexion ${name}**\n\nLe workflow n8n n'est pas encore configuré.\n\nContactez votre administrateur EMDC pour activer ce connecteur.`);
+
+  if (GOOGLE_CONNECTOR_SERVICES.includes(name)) {
+    if (!S.user?.email) {
+      addMsgUI('assistant', `⚠️ **Connexion ${name}**\n\nCréez d'abord votre compte (Paramètres → Compte) pour pouvoir connecter un service externe.`);
+      return;
+    }
+    const url = GOOGLE_OAUTH_CONNECT_URL + '?user_id=' + encodeURIComponent(S.user.email);
+    window.open(url, '_blank', 'noopener');
     return;
   }
-  try {
-    const csHdrs = {'Content-Type':'application/json'};
-    if(prefs.webhookHeaderName && prefs.webhookHeaderValue) csHdrs[prefs.webhookHeaderName]=prefs.webhookHeaderValue;
-    const resp = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: csHdrs,
-      body: JSON.stringify({ action: 'get_connector_url', service: name, lang: S.lang || 'fr' })
-    });
-    const data = await resp.json();
-    if (data && data.url) {
-      window.open(data.url, '_blank', 'noopener');
-      if (btn) { btn.textContent = '✓ Connecté'; btn.style.color='var(--green)'; btn.style.borderColor='var(--green)'; }
-      if (row) row.dataset.status = 'connected';
-    } else {
-      if (btn) { btn.textContent = 'Connecter'; btn.disabled = false; }
-      addMsgUI('assistant', `⚠️ **${name}** — Connexion non disponible\n\nCe service n'est pas encore configuré dans votre workflow. Contactez votre administrateur EMDC pour l'activer.`);
-    }
-  } catch(e) {
+
+  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+  setTimeout(() => {
     if (btn) { btn.textContent = 'Connecter'; btn.disabled = false; }
-    addMsgUI('assistant', `⚠️ **Connexion ${name}**\n\nLa vérification du workflow n8n n'a pas pu être effectuée.\n\nCe connecteur sera disponible une fois l'application déployée et le workflow configuré.\n\n*Erreur : ${e.message||'réseau'}*`);
-  }
+    addMsgUI('assistant', `⚠️ **${name}**\n\nCe connecteur arrive bientôt. Contactez l'équipe EMDC Consulting si vous en avez besoin dès maintenant.`);
+  }, 400);
 }
 function sendFeedback() {
   const name = document.getElementById('feedback-name')?.value.trim();
@@ -2150,6 +2157,7 @@ function launchApp(name, email, photo, lang) {
   const n2 = document.getElementById('s-name2'); if(n2) n2.value = name;
   const e2 = document.getElementById('s-email2'); if(e2) e2.value = email;
   updateTokenUI(); renderHistory(); startNewSession();
+  updateCompteTabView();
   refreshSupaTokens();
   if (S._paiementSucces) { delete S._paiementSucces; setTimeout(refreshSupaTokens, 3000); }
   // Message en attente (tapé avant la connexion) → l'envoyer maintenant
@@ -2185,20 +2193,74 @@ function updateAvatarUI() {
   }
 }
 
-function saveDisplayName() {
+async function saveDisplayName() {
   const inp = document.getElementById('s-name2');
   const name = (inp?.value||'').trim();
   if (!name) return;
   S.user = { ...S.user, name };
   DB.savePref('profileName', name);
+  if (_supa && S.user?.email) {
+    await _supa.from('users').upsert({ email: S.user.email, nom: name }, { onConflict: 'email' }).catch(() => {});
+  }
   updateAvatarUI();
   document.getElementById('avatar-name').textContent = name;
-  // Toast
-  const t = document.createElement('div');
-  t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--bg-elevated);border:1px solid var(--green);color:var(--green);padding:8px 18px;border-radius:20px;font-size:12px;z-index:9999';
-  t.textContent='✅ Nom mis à jour';
-  document.body.appendChild(t);
-  setTimeout(()=>t.remove(),2200);
+  showToast('✅ Compte mis à jour', 2200);
+}
+
+function updateCompteTabView() {
+  const guestSec = document.getElementById('compte-guest-section');
+  const accSec = document.getElementById('compte-account-section');
+  if (!guestSec || !accSec) return;
+  const loggedIn = !!S.user;
+  guestSec.style.display = loggedIn ? 'none' : '';
+  accSec.style.display = loggedIn ? '' : 'none';
+}
+
+async function claimSignupBonus(email) {
+  try {
+    const r = await fetch(ASSISTANT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'signup', user_id: email, email })
+    });
+    const data = await r.json();
+    if (data.success) await refreshSupaTokens();
+  } catch (e) {}
+}
+
+async function createAccountFromSettings() {
+  const name = (document.getElementById('s-signup-name')?.value || '').trim();
+  const email = (document.getElementById('s-signup-email')?.value || '').trim();
+  const pass = document.getElementById('s-signup-pass')?.value || '';
+  const pass2 = document.getElementById('s-signup-pass2')?.value || '';
+  const errEl = document.getElementById('s-signup-error');
+  const showErr = (msg) => { if (errEl) { errEl.textContent = msg; errEl.style.display = msg ? '' : 'none'; } };
+  showErr('');
+  if (!name) return showErr('Entrez votre nom.');
+  if (!email.includes('@')) return showErr('Email invalide.');
+  if (pass.length < 6) return showErr('Mot de passe : 6 caractères minimum.');
+  if (pass !== pass2) return showErr('Les mots de passe ne correspondent pas.');
+  if (!_supa) return showErr('Service non disponible. Rechargez la page.');
+  const btn = document.getElementById('s-signup-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⌛ Création...'; }
+  try {
+    const { data, error } = await _supa.auth.signUp({ email, password: pass, options: { data: { nom: name } } });
+    if (error) throw error;
+    await _supa.from('users').upsert({ email, nom: name }, { onConflict: 'email' }).catch(() => {});
+    if (data.user && data.session) {
+      await afterSupaAuth(data.user);
+      await claimSignupBonus(email);
+      updateCompteTabView();
+      closeSettings();
+      showToast('✅ Compte créé — bienvenue !', 2500);
+    } else if (data.user) {
+      showErr('✅ Compte créé ! Vérifiez votre boîte email, confirmez, puis connectez-vous.');
+    }
+  } catch (e) {
+    showErr('⚠️ ' + (e.message || 'Erreur lors de la création du compte.'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Sauvegarder mon compte'; }
+  }
 }
 
 function doLogout() {
@@ -2211,6 +2273,7 @@ function doLogout() {
   document.getElementById('avatar-name').textContent = '—';
   document.getElementById('avatar-email').textContent = '—';
   updateDropdownAuthState();
+  updateCompteTabView();
   // Clear chat but keep app visible
   document.getElementById('messages-wrap').querySelectorAll('.msg').forEach(m=>m.remove());
   const wc=document.getElementById('welcome-center'); if(wc)wc.style.display='';
@@ -2507,20 +2570,36 @@ function switchAuthTab(mode) {
   const sb = document.getElementById('supa-submit-btn');
   const ACTIVE = 'flex:1;padding:8px;border-radius:8px;border:1px solid var(--gold);background:var(--gold-dim);color:var(--gold);font-size:12px;font-weight:600;cursor:pointer';
   const IDLE = 'flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text-secondary);font-size:12px;cursor:pointer';
+  const fw = document.getElementById('supa-forgot-wrap');
   if (mode === 'signup') {
     if (ng) ng.style.display = '';
+    if (fw) fw.style.display = 'none';
     if (tsi) tsi.style.cssText = IDLE;
     if (tsu) tsu.style.cssText = ACTIVE;
     if (sb) sb.textContent = 'Créer mon compte →';
     document.getElementById('supa-pass')?.setAttribute('autocomplete','new-password');
   } else {
     if (ng) ng.style.display = 'none';
+    if (fw) fw.style.display = '';
     if (tsi) tsi.style.cssText = ACTIVE;
     if (tsu) tsu.style.cssText = IDLE;
     if (sb) sb.textContent = 'Se connecter →';
     document.getElementById('supa-pass')?.setAttribute('autocomplete','current-password');
   }
   showSupaError('');
+}
+
+async function forgotPassword() {
+  const email = (document.getElementById('supa-email')?.value || '').trim();
+  if (!email.includes('@')) { showSupaError('Entrez votre email ci-dessus, puis cliquez sur "Mot de passe oublié ?".'); return; }
+  if (!_supa) { showSupaError('Service non disponible. Rechargez la page.'); return; }
+  try {
+    const { error } = await _supa.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
+    if (error) throw error;
+    showSupaError('✅ Email de réinitialisation envoyé à ' + email + '. Vérifiez votre boîte de réception.');
+  } catch (e) {
+    showSupaError('⚠️ ' + (e.message || 'Erreur lors de l\'envoi.'));
+  }
 }
 
 function showSupaError(msg) {
@@ -2548,6 +2627,7 @@ async function submitSupaAuth() {
       if (data.user && data.session) {
         // Email confirmation désactivée → connexion directe
         await afterSupaAuth(data.user);
+        await claimSignupBonus(email);
       } else if (data.user) {
         // Email confirmation activée → demander de vérifier l'email
         if (btn) { btn.disabled = false; btn.textContent = 'Créer mon compte →'; }
