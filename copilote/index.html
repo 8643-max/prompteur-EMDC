@@ -1421,6 +1421,28 @@ function buildHistoryForAgent(sessionId, currentText) {
   } catch (_) { return []; }
 }
 
+/* ═══ MESSAGE D INDISPONIBILITE ═════════════════════════════════════
+   Une mise a jour de nos services dure quelques secondes, mais le
+   client ne doit jamais rester devant un message sec et repete.      */
+let _failStreak = 0;
+
+function maintenanceMessage() {
+  if (_failStreak === 0) {
+    return "🛠️ **Je suis momentanément indisponible.**\n\n"
+      + "Nos services reçoivent une mise à jour en ce moment. Cela ne dure généralement que quelques instants.\n\n"
+      + "**Votre demande n'est pas perdue** : réécrivez-la dans un instant, ou cliquez de nouveau sur envoyer — je la reprendrai là où nous en étions. Merci de votre patience.";
+  }
+  if (_failStreak === 1) {
+    return "🛠️ **Toujours indisponible, veuillez m'excuser.**\n\n"
+      + "La mise à jour prend un peu plus de temps que prévu. Rien n'est perdu de votre côté : votre conversation est conservée.\n\n"
+      + "Je vous invite à patienter une minute avant de réessayer. Vous pouvez aussi fermer cette fenêtre et revenir plus tard : vous retrouverez tout en l'état.";
+  }
+  return "🛠️ **L'interruption se prolonge, et j'en suis sincèrement désolé.**\n\n"
+    + "Nos équipes techniques interviennent en ce moment même sur la plateforme. Nous ne pouvons pas encore annoncer d'heure de reprise, mais tout votre travail est conservé.\n\n"
+    + "**Si votre demande est urgente**, écrivez directement à l'équipe EMDC Consulting à **eldjidiallo8643@gmail.com** en précisant votre besoin : nous prendrons le relais manuellement.\n\n"
+    + "Merci de votre compréhension — le service reviendra sans aucune action de votre part.";
+}
+
 /* ═══ TACHES PARALLELES ═════════════════════════════════════════════
    Chaque conversation porte sa propre tache. On peut en lancer une,
    basculer d'outil ou de conversation, en lancer une autre : chaque
@@ -1763,9 +1785,8 @@ async function sendMessage() {
   }
 
   // Aucune reponse automatique : si l'agent ne repond pas, on le dit franchement.
-  if (!resp) {
-    resp = "Je n'ai pas pu traiter votre demande à l'instant. Réessayez dans quelques secondes — si cela persiste, contactez l'équipe EMDC Consulting.";
-  }
+  if (!resp) { resp = maintenanceMessage(); _failStreak++; }
+  else { _failStreak = 0; }
 
   removeTyping();
   deliverToSession(taskSid, resp);
