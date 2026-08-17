@@ -2278,7 +2278,8 @@ async function saveDisplayName() {
   S.user = { ...S.user, name };
   DB.savePref('profileName', name);
   if (_supa && S.user?.email) {
-    await _supa.from('users').upsert({ email: S.user.email, nom: name }, { onConflict: 'email' }).catch(() => {});
+    const { error } = await _supa.from('users').upsert({ email: S.user.email, nom: name }, { onConflict: 'email' });
+    if (error) { showToast('⚠️ Nom non enregistré : ' + (error.message || 'erreur serveur'), 4000); return; }
   }
   updateAvatarUI();
   document.getElementById('avatar-name').textContent = name;
@@ -2349,7 +2350,8 @@ async function createAccountFromSettings() {
   try {
     const { data, error } = await _supa.auth.signUp({ email, password: pass, options: { data: { nom: name } } });
     if (error) throw error;
-    await _supa.from('users').upsert({ email, nom: name }, { onConflict: 'email' }).catch(() => {});
+    const up = await _supa.from('users').upsert({ email, nom: name }, { onConflict: 'email' });
+      if (up.error) console.error('users.upsert refuse :', up.error.message);
     if (data.user && data.session) {
       await afterSupaAuth(data.user);
       await claimSignupBonus(email);
@@ -2735,7 +2737,8 @@ async function submitSupaAuth() {
     if (_supaMode === 'signup') {
       const { data, error } = await _supa.auth.signUp({ email, password: pass, options: { data: { nom: name } } });
       if (error) throw error;
-      await _supa.from('users').upsert({ email, nom: name }, { onConflict: 'email' }).catch(() => {});
+      const up = await _supa.from('users').upsert({ email, nom: name }, { onConflict: 'email' });
+      if (up.error) console.error('users.upsert refuse :', up.error.message);
       if (data.user && data.session) {
         // Email confirmation désactivée → connexion directe
         await afterSupaAuth(data.user);
@@ -2763,7 +2766,8 @@ async function afterSupaAuth(user) {
     if (data) { nom = data.nom || ''; }
     else {
       nom = user.user_metadata?.nom || user.email.split('@')[0];
-      await _supa.from('users').insert({ email: user.email, nom }).catch(() => {});
+      const ins = await _supa.from('users').insert({ email: user.email, nom });
+      if (ins.error) console.error('users.insert refuse :', ins.error.message);
     }
   } catch(e) {}
   nom = nom || user.user_metadata?.nom || user.email.split('@')[0];
