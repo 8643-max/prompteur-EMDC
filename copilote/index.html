@@ -624,7 +624,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
             <div class="btn-icon" style="position:absolute;inset:0;pointer-events:none">📎</div>
             <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.docx,.doc,.pptx,.ppt,.xlsx,.xls" onchange="onFileSelect(event)" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0" title="Joindre un fichier"/>
           </div>
-          <textarea id="chat-input" rows="1" placeholder="Posez une question..." onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+          <textarea id="chat-input" rows="1" placeholder="Posez une question..." onkeydown="handleKey(event)" oninput="autoResize(this)" onpaste="onPasteFile(event)"></textarea>
           <button class="btn-send" onclick="sendMessage()">🚀</button>
         </div>
       </div>
@@ -1657,6 +1657,31 @@ function showFile(file) {
   document.getElementById('mode-standard').classList.remove('active');
   document.getElementById('mode-vision').classList.add('active');
 }
+// Coller une image (Ctrl+V / capture d'ecran) directement dans la zone d'ecriture.
+function onPasteFile(e) {
+  const cd = e.clipboardData;
+  if (!cd) return;
+  // Un vrai fichier copie depuis l'explorateur arrive dans .files
+  let file = cd.files && cd.files.length ? cd.files[0] : null;
+  // Une capture d'ecran arrive dans .items sous forme de blob sans nom
+  if (!file && cd.items) {
+    for (const it of cd.items) {
+      if (it.kind === 'file' && it.type.startsWith('image/')) { file = it.getAsFile(); break; }
+    }
+  }
+  if (!file) return; // texte colle normalement : on ne touche a rien
+  e.preventDefault();
+  if (!file.name || file.name === 'image.png' || !file.name.includes('.')) {
+    const ext = (file.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    const stamp = p(d.getDate()) + p(d.getMonth() + 1) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+    file = new File([file], 'capture-' + stamp + '.' + ext, { type: file.type });
+  }
+  showFile(file);
+  showToast('📎 ' + file.name + ' ajouté', 2000);
+}
+
 function removeFile() {
   S.pendingFile=null; S.hasFile=false;
   document.getElementById('upload-preview').classList.remove('show');
@@ -2538,6 +2563,15 @@ document.addEventListener('click', e=>{
 // Init
 window.addEventListener('DOMContentLoaded', ()=>{
   document.querySelectorAll('.logo-slot').forEach(el => el.src = LOGO);
+  // Coller une image n'importe ou dans l'app (pas seulement dans la zone d'ecriture)
+  document.addEventListener('paste', (e) => {
+    if (e.defaultPrevented) return;
+    const sp = document.getElementById('settings-panel');
+    if (sp && sp.classList.contains('open')) return; // on n'interfere pas avec les Parametres
+    const el = document.activeElement;
+    if (el && el.id !== 'chat-input' && (el.tagName === 'INPUT' || el.isContentEditable)) return;
+    onPasteFile(e);
+  });
   const p = DB.prefs();
   const fs = p.fontSize||'normal'; applyFontSize(fs,true);
   if(document.getElementById('s-sound')) document.getElementById('s-sound').checked = !!p.sound;
