@@ -1376,49 +1376,7 @@ function showTyping() {
 }
 function removeTyping() { const t = document.getElementById('typing-msg'); if (t) t.remove(); }
 
-/* ═══ SMART ANALYSIS ════════════════════════════════════════════════ */
-function buildAnalysis(filename) {
-  const fn = (filename||'').toLowerCase(), ext = fn.split('.').pop().replace(/\W/g,'');
-  let type, details, recs, conf = Math.floor(Math.random()*4)+94;
-  if (fn.includes('planning')||fn.includes('plan')||fn.includes('agenda')||fn.includes('calendrier')) {
-    type='Tableau de planning / Gestion de projet'; details='6 tâches planifiées, 2 jalons critiques identifiés';
-    recs='• Vérifier la disponibilité des ressources aux jalons\n• Ajouter colonne avancement (%)\n• Prévoir un délai de contingence';
-  } else if (fn.includes('contrat')||fn.includes('contract')||fn.includes('convention')) {
-    type='Contrat / Document juridique'; details='3 clauses importantes, 1 date d\'échéance';
-    recs='• Vérifier les conditions de résiliation (clause 4.2)\n• Confirmer les délais de préavis\n• Archiver une copie signée';
-  } else if (fn.includes('facture')||fn.includes('invoice')||fn.includes('devis')) {
-    type='Facture / Document commercial'; details='Montant total extrait, 3 lignes de facturation';
-    recs='• Vérifier le numéro et la date\n• Confirmer les coordonnées du bénéficiaire\n• Rapprocher avec le bon de commande';
-  } else if (fn.includes('budget')||fn.includes('finance')||fn.includes('prevision')) {
-    type='Document financier / Budget'; details='3 postes de dépenses analysés, 1 dépassement détecté';
-    recs='• Réviser la provision charges fixes\n• Intégrer les données T3 manquantes\n• Comparer aux objectifs annuels';
-  } else if (fn.includes('rapport')||fn.includes('bilan')||fn.includes('report')) {
-    type='Rapport / Bilan d\'activité'; details='4 sections analysées, données chiffrées extraites';
-    recs='• Compléter la section conclusions\n• Ajouter les KPI manquants\n• Mettre à jour la page de garde';
-  } else if (ext==='xlsx'||ext==='xls') {
-    type='Tableau de données Excel'; details=(Math.floor(Math.random()*5)+5)+' colonnes, données structurées';
-    recs='• Vérifier les formules calculées\n• Mettre à jour les données de référence\n• Créer une feuille de synthèse';
-  } else if (ext==='pdf') {
-    type='Document PDF multi-pages'; details=(Math.floor(Math.random()*4)+2)+' pages analysées';
-    recs='• Confirmer la lisibilité\n• Extraire les données clés en tableau\n• Vérifier la cohérence';
-  } else if (ext==='docx'||ext==='doc') {
-    type='Document Word'; details='Structure documentaire analysée, sections détectées';
-    recs='• Harmoniser les styles de titres\n• Ajouter table des matières\n• Vérifier la mise en forme';
-  } else if (ext==='pptx'||ext==='ppt') {
-    type='Présentation PowerPoint'; details=(Math.floor(Math.random()*8)+6)+' diapositives analysées';
-    recs='• Harmoniser le thème visuel\n• Simplifier les slides chargées\n• Ajouter notes de présentation';
-  } else if (ext==='png'||ext==='jpg'||ext==='jpeg') {
-    type='Image / Document visuel'; details='Texte extrait par OCR — haute résolution';
-    recs='• Confirmer la lisibilité\n• Sauvegarder en version texte';
-  } else {
-    type='Document professionnel'; details='Contenu analysé et indexé';
-    recs='• Vérifier la cohérence\n• Archiver dans Drive';
-  }
-  showResultCard(filename, ext, type, conf, details, recs);
-  return `Document **${filename}** analysé ✅\n\n**Type :** ${type}\n**Confiance :** **${conf}%**\n**Détails :** ${details}\n\n**Recommandations :**\n${recs}\n\nVoulez-vous que je **génère un rapport** ou que je **modifie ce document** ?`;
-}
-
-function showResultCard(filename, ext, type, conf, details, recs) {
+function showResultCard(filename, ext, extraction) {
   const icons = {pdf:'📄',xlsx:'📋',xls:'📋',docx:'📝',doc:'📝',pptx:'📊',ppt:'📊',png:'🖼️',jpg:'🖼️',jpeg:'🖼️'};
   const icon = icons[ext] || '📎';
   document.getElementById('preview-empty').style.display = 'none';
@@ -1427,12 +1385,64 @@ function showResultCard(filename, ext, type, conf, details, recs) {
   document.getElementById('rc-icon').textContent = icon;
   document.getElementById('rc-name').textContent = filename;
   document.getElementById('rc-meta').textContent = new Date().toLocaleDateString('fr-FR') + ' · EMDC Copilote';
-  document.getElementById('rc-conf').textContent = '✓ ' + conf + '%';
-  document.getElementById('rc-sections').innerHTML = `
-    <div><div class="result-section-title">Type détecté</div><div class="result-section-body">${type}</div></div>
-    <div><div class="result-section-title">Analyse</div><div class="result-section-body">${details}</div></div>
-    <div><div class="result-section-title">Recommandations</div><div class="result-section-body"><ul>${recs.split('\n').map(r=>r.trim().replace(/^•\s*/,'<li>')+('</li>')).join('')}</ul></div></div>`;
+  const conf = document.getElementById('rc-conf'); if (conf) conf.style.display = 'none';
+  document.getElementById('rc-sections').innerHTML =
+    '<div><div class="result-section-title">Analyse</div><div class="result-section-body">' +
+    markdownLite(escapeHtml(extraction)) + '</div></div>';
   if (window.innerWidth < 960) document.getElementById('right-panel').classList.add('mobile-open');
+}
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Envoie le fichier a l'agent pour une VRAIE analyse. Rien n'est stocke : le
+// fichier part en direct, il n'est ecrit nulle part.
+async function analyzeFileWithAgent(file, question) {
+  if (!file) return { error: "Aucun fichier joint." };
+  const MAX = 8 * 1024 * 1024;
+  if (file.size > MAX) return { error: "Fichier trop volumineux (8 Mo maximum)." };
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const fileType = ext === 'pdf' ? 'pdf' : (['png','jpg','jpeg','webp','gif'].includes(ext) ? 'image' : null);
+  if (!fileType) return { error: "Format non pris en charge pour l'analyse : envoyez une image (PNG, JPG) ou un PDF." };
+
+  const b64 = await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result).split(',')[1] || '');
+    fr.onerror = () => reject(new Error('lecture impossible'));
+    fr.readAsDataURL(file);
+  });
+
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), 120000);
+  try {
+    const r = await fetch(ASSISTANT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'analyze_document',
+        user_id: S.user?.id || S.user?.email || 'guest',
+        email: S.user?.email || '',
+        session_id: S.currentSessionId || ('guest-' + Date.now().toString(36)),
+        file_type: fileType,
+        file_name: file.name,
+        mime_type: file.type || (fileType === 'pdf' ? 'application/pdf' : 'image/png'),
+        prompt: question || 'Analyse ce document et explique-moi ce qu\'il contient.',
+        file_base64: b64,
+      }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(tid);
+    const txt = await r.text();
+    if (!txt || txt.trim().length < 2) return { error: null };
+    let data; try { data = JSON.parse(txt); } catch (_) { return { error: null }; }
+    if (data.extraction) return { extraction: data.extraction };
+    if (data.response) return { extraction: data.response };
+    if (data.error) return { error: data.error };
+    return { error: null };
+  } catch (e) {
+    clearTimeout(tid);
+    return { error: e.name === 'AbortError' ? "L'analyse a pris trop de temps. Réessayez avec un fichier plus léger." : null };
+  }
 }
 
 /* ═══ AI RESPONSES (multilingues) ═══════════════════════════════════ */
@@ -1557,14 +1567,25 @@ async function sendMessage() {
 
   input.value = ''; autoResize(input);
   const fname = S.pendingFile?.name;
+  const pfile = S.pendingFile;
   if (hasFile) removeFile();
 
   if (isVision) {
-    consumeToken();
     showLoadingOverlay();
-    await sleep(2800);
+    let out;
+    try {
+      out = await analyzeFileWithAgent(pfile, text);
+    } catch (e) {
+      out = null;
+    }
     hideLoadingOverlay();
-    addMsgUI('assistant', buildAnalysis(fname));
+    if (out && out.extraction) {
+      showResultCard(fname, (fname.split('.').pop() || '').toLowerCase(), out.extraction);
+      addMsgUI('assistant', out.extraction);
+    } else {
+      addMsgUI('assistant', (out && out.error) || "Je n'ai pas réussi à analyser ce fichier. Réessayez dans un instant, ou envoyez-le dans un autre format.");
+    }
+    setTimeout(refreshSupaTokens, 800);
     return;
   }
 
@@ -1576,7 +1597,7 @@ async function sendMessage() {
   const howtoWords = ['comment','how','wie','cómo','como','come','jinsi'];
 
   const prefs = DB.prefs();
-  const webhookUrl = prefs.webhookUrl || S.webhookUrl;
+  const webhookUrl = ASSISTANT_URL; // l'agent traite TOUTES les demandes
   let resp;
   if (webhookUrl) {
     try {
@@ -1613,15 +1634,9 @@ async function sendMessage() {
     }
   }
 
+  // Aucune reponse automatique : si l'agent ne repond pas, on le dit franchement.
   if (!resp) {
-    await sleep(600 + Math.random() * 400);
-    if (greetWords.some(w=>q.includes(w))) resp = R.greeting(S.user?.name||'vous');
-    else if (tokenWords.some(w=>q.includes(w))) resp = R.balance();
-    else if (howtoWords.some(w=>q.includes(w))&&(q.includes('fonctionne')||q.includes('work')||q.includes('funktioniert')||q.includes('funciona')||q.includes('marche'))) resp = R.howto();
-    else if (S.currentTool==='presentation'||(q.includes('présentation')||q.includes('presentation')||q.includes('slides'))) resp = R.presentation();
-    else if (S.currentTool==='sheet'||(q.includes('tableau')||q.includes('sheet')||q.includes('tabelle')||q.includes('tabela'))) resp = R.sheet();
-    else if (S.currentTool==='recherche') resp = R.recherche(text);
-    else resp = R.generic(text);
+    resp = "Je n'ai pas pu traiter votre demande à l'instant. Réessayez dans quelques secondes — si cela persiste, contactez l'équipe EMDC Consulting.";
   }
 
   removeTyping();
@@ -2193,7 +2208,7 @@ function launchApp(name, email, photo, lang) {
     setTimeout(() => sendMessage(), 700);
   } else {
     setTimeout(() => {
-      if (!document.querySelector('.msg')) addMsgUI('assistant', R.greeting(name));
+      if (!document.querySelector('.msg')) addMsgUI('assistant', 'Bonjour **' + name + '** ! 👋\n\nPosez-moi votre question, ou joignez un document avec 📎 pour que je l\'analyse.');
     }, 500);
   }
 }
