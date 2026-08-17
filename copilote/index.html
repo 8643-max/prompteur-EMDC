@@ -625,7 +625,8 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
             <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.docx,.doc,.pptx,.ppt,.xlsx,.xls" onchange="onFileSelect(event)" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0" title="Joindre un fichier"/>
           </div>
           <textarea id="chat-input" rows="1" placeholder="Posez une question..." onkeydown="handleKey(event)" oninput="autoResize(this)" onpaste="onPasteFile(event)"></textarea>
-          <button class="btn-send" onclick="sendMessage()">🚀</button>
+          <button class="btn-send" id="btn-send" onclick="sendMessage()">🚀</button>
+          <button class="btn-send" id="btn-stop" onclick="stopAgent()" title="Arrêter la tâche en cours" style="display:none;background:#8b2020;border-color:#a33">⏹</button>
         </div>
       </div>
     </main>
@@ -1045,7 +1046,12 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
         <div class="srow"><div class="srow-left"><div class="srow-label">Moteur IA</div></div><span style="font-size:12px;color:var(--text-muted)">EMDC Intelligence Engine</span></div>
         <div class="srow"><div class="srow-left"><div class="srow-label">Traitement</div></div><span style="font-size:12px;color:var(--text-muted)">Infrastructure Cloud EMDC Consulting</span></div>
       </div>
-      <div class="sinfo">🔒 <strong>Sécurité</strong> : vos documents ne sont jamais stockés de façon permanente. Chaque échange est chiffré en transit. EMDC Consulting IA ne partage vos données avec aucun tiers.<br><br>© 2026 EMDC Consulting IA — Tous droits réservés</div>
+      <div class="sinfo">🔒 <strong>Confidentialité — nos engagements</strong><br><br>
+        <strong>Vos documents ne sont jamais enregistrés dans notre base de données.</strong> Lorsque vous envoyez un fichier pour analyse, il est traité puis immédiatement oublié : il n'est conservé ni sur nos serveurs, ni ailleurs.<br><br>
+        Un document n'est conservé <strong>que si vous le demandez explicitement</strong> — par exemple en demandant à votre copilote de le garder dans votre base documentaire. C'est vous, et vous seul, qui décidez de ce qui est gardé.<br><br>
+        Nous ne proposons jamais spontanément d'enregistrer vos fichiers, et nous ne partageons vos données avec aucun tiers. Chaque échange est chiffré pendant son transport.<br><br>
+        Les entreprises soumises à des exigences strictes peuvent conserver leurs fichiers sur leur propre matériel : contactez l'équipe EMDC Consulting pour la mise en place.<br><br>
+        © 2026 EMDC Consulting IA — Tous droits réservés</div>
       <div class="sgroup" style="margin-top:12px">
         <div class="sgroup-title">📬 Nous contacter — Améliorer l'application</div>
         <div class="sfield"><label>Votre nom</label><input class="sinput" id="feedback-name" placeholder="Votre nom"/></div>
@@ -1395,6 +1401,29 @@ function escapeHtml(s) {
   return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+/* ═══ CONTROLE DE L'AGENT (arret a la demande du client) ════════════ */
+let _activeCtrl = null;      // requete en cours, annulable
+let _userStopped = false;    // l'arret vient-il du client ?
+
+function setAgentBusy(on) {
+  const s = document.getElementById('btn-send');
+  const k = document.getElementById('btn-stop');
+  if (s) s.style.display = on ? 'none' : '';
+  if (k) k.style.display = on ? '' : 'none';
+}
+
+// Le client reprend la main : on interrompt la tache en cours.
+function stopAgent() {
+  if (!_activeCtrl) return;
+  _userStopped = true;
+  try { _activeCtrl.abort(); } catch (_) {}
+  _activeCtrl = null;
+  setAgentBusy(false);
+  removeTyping();
+  hideLoadingOverlay();
+  addMsgUI('assistant', "⏹ **Tâche interrompue à votre demande.**\n\nJe me suis arrêté là où j'en étais. Rien de plus n'a été effectué.\n\nVous pouvez maintenant me donner de nouvelles consignes, me demander de reprendre autrement, ou d'annuler ce qui a déjà été fait.");
+}
+
 // Envoie le fichier a l'agent pour une VRAIE analyse. Rien n'est stocke : le
 // fichier part en direct, il n'est ecrit nulle part.
 async function analyzeFileWithAgent(file, question) {
@@ -1413,6 +1442,7 @@ async function analyzeFileWithAgent(file, question) {
   });
 
   const ctrl = new AbortController();
+  _activeCtrl = ctrl; _userStopped = false; setAgentBusy(true);
   const tid = setTimeout(() => ctrl.abort(), 120000);
   try {
     const r = await fetch(ASSISTANT_URL, {
@@ -1441,7 +1471,10 @@ async function analyzeFileWithAgent(file, question) {
     return { error: null };
   } catch (e) {
     clearTimeout(tid);
+    if (_userStopped) return { stopped: true };
     return { error: e.name === 'AbortError' ? "L'analyse a pris trop de temps. Réessayez avec un fichier plus léger." : null };
+  } finally {
+    _activeCtrl = null; setAgentBusy(false);
   }
 }
 
@@ -1579,6 +1612,7 @@ async function sendMessage() {
       out = null;
     }
     hideLoadingOverlay();
+    if (out && out.stopped) { _userStopped = false; return; } // arret client : message deja affiche
     if (out && out.extraction) {
       showResultCard(fname, (fname.split('.').pop() || '').toLowerCase(), out.extraction);
       addMsgUI('assistant', out.extraction);
@@ -1602,7 +1636,8 @@ async function sendMessage() {
   if (webhookUrl) {
     try {
       const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 60000);
+      _activeCtrl = ctrl; _userStopped = false; setAgentBusy(true);
+      const tid = setTimeout(() => ctrl.abort(), 120000);
       const whHeaders = { 'Content-Type': 'application/json' };
       if (prefs.webhookHeaderName && prefs.webhookHeaderValue) whHeaders[prefs.webhookHeaderName] = prefs.webhookHeaderValue;
       const r = await fetch(webhookUrl, {
@@ -1629,8 +1664,11 @@ async function sendMessage() {
         }
       }
     } catch(e) {
-      if (e.name === 'AbortError') { resp = 'Le serveur met trop de temps. Reessaie.'; }
+      if (_userStopped) { _userStopped = false; return; } // arret demande : message deja affiche
+      if (e.name === 'AbortError') { resp = "La tâche prend trop de temps. Réessayez, ou reformulez votre demande."; }
       else { resp = null; }
+    } finally {
+      _activeCtrl = null; setAgentBusy(false);
     }
   }
 
