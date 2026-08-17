@@ -1385,6 +1385,22 @@ function addMsgUI(role, text, save = true) {
   if (save && S.currentSessionId) saveMessageToSession(role, text);
 }
 
+// Tout ce qui est affiche a l'ecran du client dans cette conversation, y
+// compris les messages automatiques de l'application : l'agent doit pouvoir
+// repondre a une question portant sur n'importe lequel d'entre eux.
+function buildHistoryForAgent(sessionId, currentText) {
+  const MAX = 14;
+  try {
+    const s = DB.sessions().find(x => x.id === sessionId);
+    let msgs = (s && s.messages) ? s.messages.slice(-MAX) : [];
+    // On retire le message que le client vient d'envoyer : il part deja a part.
+    if (msgs.length && msgs[msgs.length - 1].role === 'user' && msgs[msgs.length - 1].text === currentText) {
+      msgs = msgs.slice(0, -1);
+    }
+    return msgs.map(m => ({ role: m.role, text: String(m.text || '').slice(0, 1200) }));
+  } catch (_) { return []; }
+}
+
 /* ═══ TACHES PARALLELES ═════════════════════════════════════════════
    Chaque conversation porte sa propre tache. On peut en lancer une,
    basculer d'outil ou de conversation, en lancer une autre : chaque
@@ -1702,6 +1718,7 @@ async function sendMessage() {
           email: S.user?.email || '',
           user_id: S.user?.id || S.user?.email || 'guest',
           session_id: S.currentSessionId || ('guest-' + Date.now().toString(36)),
+          history: buildHistoryForAgent(taskSid, text),
           lang: S.lang || 'fr',
           mode: S.mode,
           tool: S.currentTool || null
@@ -1870,6 +1887,7 @@ function switchTab(tab) {
   document.querySelectorAll('.settings-tab-content').forEach(el=>el.classList.remove('active'));
   const target=document.getElementById('stab-'+tab);
   if(target)target.classList.add('active');
+  if(tab==='connecteurs') refreshConnectors();
   // populate compte tab
   if(tab==='compte'){
     const sn=document.getElementById('s-name2'); if(sn)sn.value=S.user?.name||'';
@@ -1893,6 +1911,61 @@ function filterConn(type, el) {
     row.style.display=(type==='all'||type===st)?'':'none';
   });
 }
+
+/* ═══ ETAT REEL DES CONNECTEURS ═════════════════════════════════════
+   L'application interrogeait jamais le serveur : un service connecte
+   restait affiche comme non connecte. Elle demande maintenant.       */
+let _connState = { google: false, email: null };
+
+async function refreshConnectors() {
+  if (!S.user?.email) { _connState = { google: false, email: null }; applyConnectorState(); return; }
+  try {
+    const r = await fetch(ASSISTANT_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'list_connections', user_id: S.user.email }),
+    });
+    const d = await r.json();
+    _connState = { google: !!d.google, email: d.email || null };
+  } catch (_) { _connState = { google: false, email: null }; }
+  applyConnectorState();
+}
+
+function applyConnectorState() {
+  document.querySelectorAll('#conn-list .conn-row').forEach(row => {
+    const nameEl = row.querySelector('.conn-row-name');
+    const btn = row.querySelector('.conn-row-btn');
+    if (!nameEl || !btn) return;
+    const isGoogle = GOOGLE_CONNECTOR_SERVICES.includes(nameEl.textContent.trim());
+    const on = isGoogle && _connState.google;
+    row.dataset.status = on ? 'on' : 'off';
+    btn.textContent = on ? 'Déconnecter' : 'Connecter';
+    btn.style.borderColor = on ? 'var(--gold)' : '';
+    btn.style.color = on ? 'var(--gold)' : '';
+    btn.disabled = false;
+  });
+  const active = document.querySelector('#conn-filter .sradio-btn.active');
+  if (active) {
+    const t = /connect(é|e)$/i.test(active.textContent.trim()) ? 'on'
+            : (/non connect/i.test(active.textContent) ? 'off' : 'all');
+    document.querySelectorAll('#conn-list .conn-row').forEach(row => {
+      row.style.display = (t === 'all' || t === row.dataset.status) ? '' : 'none';
+    });
+  }
+}
+
+async function disconnectGoogle(name) {
+  if (!confirm('Déconnecter votre compte Google ?\n\nVotre copilote ne pourra plus agir dans Gmail, Drive et Sheets tant que vous ne l\'aurez pas reconnecté.')) return;
+  try {
+    const r = await fetch(ASSISTANT_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'disconnect_google', user_id: S.user.email }),
+    });
+    await r.json();
+  } catch (_) {}
+  await refreshConnectors();
+  addMsgUI('assistant', '🔌 **Compte Google déconnecté.**\n\nVos services Google ne sont plus accessibles depuis votre copilote. Vous pouvez les reconnecter à tout moment depuis Paramètres → Connecteurs.');
+}
+
 const GOOGLE_CONNECTOR_SERVICES = ['Gmail', 'Google Drive', 'Google Calendar', 'Google Sheets'];
 const GOOGLE_OAUTH_CONNECT_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/oauth/google/connect';
 
@@ -1901,12 +1974,16 @@ async function connectService(name, triggerEl) {
   const row = btn ? btn.closest('.conn-row') : null;
 
   if (GOOGLE_CONNECTOR_SERVICES.includes(name)) {
+    if (_connState.google && S.user?.email) { await disconnectGoogle(name); return; }
     if (!S.user?.email) {
       addMsgUI('assistant', `⚠️ **Connexion ${name}**\n\nCréez d'abord votre compte (Paramètres → Compte) pour pouvoir connecter un service externe.`);
       return;
     }
     const url = GOOGLE_OAUTH_CONNECT_URL + '?user_id=' + encodeURIComponent(S.user.email);
     window.open(url, '_blank', 'noopener');
+    addMsgUI('assistant', '🔗 **Connexion à ' + name + ' en cours.**' + String.fromCharCode(10,10) + 'Autorisez l accès dans la fenêtre Google qui vient de s ouvrir, puis revenez ici : je vérifierai automatiquement.');
+    setTimeout(refreshConnectors, 8000);
+    setTimeout(refreshConnectors, 20000);
     return;
   }
 
