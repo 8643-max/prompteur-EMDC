@@ -1709,7 +1709,10 @@ async function sendMessage() {
   const taskSid = S.currentSessionId;
   if (hasFile) removeFile();
 
-  if (isVision) {
+  // Le mode Vision n'emprunte la voie d'analyse QUE si un fichier est joint.
+  // Sans fichier, la demande suit le chemin normal : l'agent decide et agit
+  // (navigation web, redaction d'un document Google...).
+  if (isVision && hasFile) {
     showLoadingOverlay();
     let out;
     try {
@@ -1740,9 +1743,11 @@ async function sendMessage() {
   const webhookUrl = ASSISTANT_URL; // l'agent traite TOUTES les demandes
   let resp;
   if (webhookUrl) {
+    // Declares ici : le bloc finally doit pouvoir les voir.
+    let ctrl = null, tid = null;
     try {
-      const ctrl = taskStart(taskSid, 'conversation');
-      const tid = setTimeout(() => ctrl.abort(), 120000);
+      ctrl = taskStart(taskSid, 'conversation');
+      tid = setTimeout(() => ctrl.abort(), 120000);
       const whHeaders = { 'Content-Type': 'application/json' };
       if (prefs.webhookHeaderName && prefs.webhookHeaderValue) whHeaders[prefs.webhookHeaderName] = prefs.webhookHeaderValue;
       const r = await fetch(webhookUrl, {
@@ -1775,7 +1780,8 @@ async function sendMessage() {
       if (e.name === 'AbortError') { resp = "La tâche prend trop de temps. Réessayez, ou reformulez votre demande."; }
       else { resp = null; }
     } finally {
-      clearTimeout(tid); taskEnd(taskSid);
+      if (tid) clearTimeout(tid);
+      taskEnd(taskSid);
     }
   }
 
