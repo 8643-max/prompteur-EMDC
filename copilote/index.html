@@ -1547,8 +1547,11 @@ async function suivreJob(jobId, userId, taskSid, ctrl, brut) {
     if (j.statut === 'termine') return brut ? { statut: 'termine', resultat: j.resultat || null } : (j.resultat || null);
     if (j.statut === 'annule') throw stop();
     if (j.statut === 'erreur') {
-      const msg = "Je n'ai pas pu terminer votre demande.\n\n**Ce qui a bloqué :** " + (j.erreur || 'erreur inconnue')
-        + "\n\nReformulez votre demande, ou découpez-la en deux étapes et je repars dessus.";
+      // Le serveur compose un compte rendu du travail deja fait : on le
+      // prefere toujours au message generique, pour ne rien perdre.
+      const msg = j.resultat
+        || ("Je n'ai pas pu terminer votre demande.\n\n**Ce qui a bloqué :** " + (j.erreur || 'erreur inconnue')
+          + "\n\nReformulez votre demande, ou découpez-la en deux étapes et je repars dessus.");
       return brut ? { statut: 'erreur', erreur: msg } : msg;
     }
   }
