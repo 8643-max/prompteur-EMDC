@@ -171,6 +171,8 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 .msg-bubble code{background:rgba(0,0,0,.3);padding:1px 5px;border-radius:4px;font-family:"Courier New",monospace;font-size:12px;color:var(--gold-light)}
 .typing-indicator{display:flex;align-items:center;gap:4px;padding:12px 14px}
 .agent-steps{padding:10px 14px 2px;font-size:.92em;line-height:1.75;opacity:.85}
+.capture-vignette{display:block;max-width:220px;width:100%;margin:6px 0;border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.capture-vignette:hover{border-color:var(--gold-muted)}
 .typing-dot{width:7px;height:7px;border-radius:50%;background:var(--gold-muted);animation:blink 1.2s ease-in-out infinite}
 .typing-dot:nth-child(2){animation-delay:.25s}
 .typing-dot:nth-child(3){animation-delay:.5s}
@@ -1509,8 +1511,9 @@ function updateSteps(sessionId, etapes) {
   const b = document.querySelector('#typing-msg .msg-bubble');
   if (!b) return;
   const lignes = (etapes || [])
-    .map(e => '✓ ' + escapeHtml(String((e && e.texte) || '')))
-    .filter(l => l.length > 2)
+    .map(e => String((e && e.texte) || '').trim())
+    .filter(t => t.length > 1)
+    .map(t => '✓ ' + lienCliquable(escapeHtml(t).replace(/\n/g, '<br>')))
     .join('<br>');
   b.innerHTML = (lignes ? '<div class="agent-steps">' + lignes + '</div>' : '')
     + '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
@@ -1579,9 +1582,16 @@ function escapeHtml(s) {
 }
 
 // Rend cliquables les adresses presentes dans un texte deja echappe.
+// Une capture d'ecran s'affiche en vignette plutot qu'en longue adresse :
+// le client voit ce que l'agent a vu.
 function lienCliquable(html) {
-  return String(html || '').replace(/(https?:\/\/[^\s<]+)/g,
-    u => '<a href="' + u + '" target="_blank" rel="noopener" style="color:var(--gold);word-break:break-all">' + u + '</a>');
+  return String(html || '').replace(/(https?:\/\/[^\s<]+)/g, u => {
+    if (/\.(jpe?g|png|webp|gif)(\?|$)/i.test(u)) {
+      return '<a href="' + u + '" target="_blank" rel="noopener">'
+        + '<img src="' + u + '" alt="capture d\'écran" class="capture-vignette" loading="lazy"></a>';
+    }
+    return '<a href="' + u + '" target="_blank" rel="noopener" style="color:var(--gold);word-break:break-all">' + u + '</a>';
+  });
 }
 
 // Panneau Resultats pour tout travail de l'agent : navigation web, document
@@ -1599,7 +1609,8 @@ function showWorkResultCard(demande, etapes, resultat) {
     new Date().toLocaleString('fr-FR') + ' · ' + etapes.length + (etapes.length > 1 ? ' étapes' : ' étape');
   const conf = document.getElementById('rc-conf'); if (conf) conf.style.display = 'none';
   const liste = etapes
-    .map(e => '<div style="margin-bottom:4px">✓ ' + escapeHtml(String((e && e.texte) || '')) + '</div>')
+    .map(e => '<div style="margin-bottom:6px">✓ '
+      + lienCliquable(escapeHtml(String((e && e.texte) || '')).replace(/\n/g, '<br>')) + '</div>')
     .join('');
   document.getElementById('rc-sections').innerHTML =
     '<div><div class="result-section-title">Ce que j\'ai fait</div><div class="result-section-body">' + liste + '</div></div>' +
