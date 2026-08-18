@@ -14,9 +14,22 @@ Le client n'attend plus un envoi manuel. Il demande à EMDC Copilote *« je veux
 
 **Le fichier `agent-local.zip` à la racine du dépôt est le kit client.** Il ne contient ni ce README ni `provision-client.js`. **Après toute modification de `src/server.js`, `install.*`, `start.*` ou `LISEZ-MOI.txt`, régénérez-le**, sinon les nouveaux clients installeront une version périmée :
 
+⚠️ **N'utilisez pas `Compress-Archive` directement sur la liste de fichiers.** En lui passant
+`scripts\download-cloudflared.js`, il place ce fichier **à la racine** de l'archive et non dans `scripts/` :
+`install.sh` et `install.bat`, qui l'appellent via `node scripts/download-cloudflared.js`, échouent alors
+chez le client. Passez par un dossier de préparation, qui garantit la bonne arborescence :
+
 ```powershell
-Compress-Archive -Path LISEZ-MOI.txt,install.bat,install.sh,start.bat,start.sh,package.json,agent.config.example.json,src,scripts\download-cloudflared.js -DestinationPath ..\agent-local.zip -Force
+$src = "$PWD"; $stage = "$env:TEMP\kit-emdc-stage"
+if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+New-Item -ItemType Directory -Force -Path "$stage\scripts" | Out-Null
+Copy-Item "$src\LISEZ-MOI.txt","$src\install.bat","$src\install.sh","$src\start.bat","$src\start.sh","$src\package.json","$src\agent.config.example.json" -Destination $stage
+Copy-Item "$src\src" -Destination $stage -Recurse
+Copy-Item "$src\scripts\download-cloudflared.js" -Destination "$stage\scripts"
+Compress-Archive -Path "$stage\*" -DestinationPath "..\agent-local.zip" -Force
 ```
+
+Vérifiez ensuite que l'archive contient bien `scripts\download-cloudflared.js` et `src\server.js`.
 
 ⚠️ **Limite connue :** le secret transite dans la conversation, il est donc écrit dans `conversation_logs`. Acceptable tant qu'un compte n'est utilisé que par son titulaire, à revoir pour un accès partagé.
 
@@ -71,7 +84,10 @@ Une fois démarré, l'agent se connecte automatiquement au cloud EMDC via un tun
   - `POST /files` — déposer un document
   - `GET /files` — lister les documents
   - `GET /files/<nom>` — **lire le contenu d'un fichier** (ajouté le 18/08/2026 : indispensable aux mémoires `.md`, dont `profil-client.md`, que l'assistant doit pouvoir relire)
-  - `DELETE /files/<nom>` — supprimer un document
+  - `DELETE /files/<nom>` — retirer un document : il part dans `storage/.corbeille/`, **jamais d'effacement définitif**
+  - `POST /annuler` — défaire la dernière action de l'assistant sur un fichier (ajouté le 19/08/2026) :
+    `operation:"ecriture"` remet la version précédente depuis `storage/.historique/`,
+    `operation:"creation"` déplace vers `storage/.corbeille/`
 - Le tunnel (Cloudflare, gratuit, sans compte) rend l'agent joignable depuis le cloud sans exposer le PC du client sur internet ni ouvrir de port.
 - À chaque démarrage, l'agent s'auto-enregistre auprès du cloud EMDC avec sa nouvelle adresse de tunnel (l'adresse change à chaque redémarrage — c'est normal et pris en compte automatiquement).
 - Toutes les opérations sont journalisées dans la fenêtre de l'agent pour transparence.

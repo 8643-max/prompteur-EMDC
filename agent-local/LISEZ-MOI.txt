@@ -89,3 +89,24 @@ COMMENT VOTRE VIE PRIVÉE EST PROTÉGÉE
 
 BESOIN D'AIDE ?
   contact@emdcconsulting.com
+
+------------------------------------------------------------
+REVENIR EN ARRIERE (nouveau)
+------------------------------------------------------------
+
+L'assistant peut maintenant defaire ce qu'il vient de faire sur vos
+documents. Dites-lui simplement :
+
+   "annule ce que tu viens de faire"
+
+Ce qui se passe sur votre ordinateur :
+
+ - Avant de modifier un document, l'agent en garde une copie dans
+   storage\.historique\  (les 10 dernieres versions).
+ - Un document retire ne part jamais definitivement : il va dans
+   storage\.corbeille\  et vous pouvez l'en ressortir vous-meme.
+
+Ces deux dossiers restent CHEZ VOUS. Aucune ancienne version, aucun
+document supprime ne remonte sur internet. C'est la raison pour
+laquelle cette fonction demande de mettre l'agent a jour : garder vos
+versions ailleurs que sur votre PC aurait trahi la promesse de depart.

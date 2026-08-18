@@ -60,6 +60,43 @@ function checkSignature(cfg, timestamp, rawBody, signature) {
   return crypto.timingSafeEqual(a, b);
 }
 
+// ── Historique et corbeille, tous deux SUR LE PC DU CLIENT ────────────────
+// Rien de tout cela ne remonte au cloud : c'est precisement ce qui permet
+// d'annuler une modification sans trahir la promesse de l'agent local.
+const HISTORIQUE_DIR = path.join(STORAGE_DIR, '.historique');
+const CORBEILLE_DIR = path.join(STORAGE_DIR, '.corbeille');
+const MAX_VERSIONS = 10; // au-dela, on efface les plus anciennes : pas de disque qui gonfle
+
+function horodatage() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function archiverVersion(chemin, nom) {
+  fs.mkdirSync(HISTORIQUE_DIR, { recursive: true });
+  const copie = path.join(HISTORIQUE_DIR, `${nom}.${horodatage()}`);
+  fs.copyFileSync(chemin, copie);
+  const anciennes = fs.readdirSync(HISTORIQUE_DIR)
+    .filter((f) => f.startsWith(nom + '.'))
+    .sort();
+  while (anciennes.length > MAX_VERSIONS) {
+    try { fs.unlinkSync(path.join(HISTORIQUE_DIR, anciennes.shift())); } catch (e) {}
+  }
+  return copie;
+}
+
+function derniereVersion(nom) {
+  if (!fs.existsSync(HISTORIQUE_DIR)) return null;
+  const v = fs.readdirSync(HISTORIQUE_DIR).filter((f) => f.startsWith(nom + '.')).sort();
+  return v.length ? path.join(HISTORIQUE_DIR, v[v.length - 1]) : null;
+}
+
+function corbeille(chemin, nom) {
+  fs.mkdirSync(CORBEILLE_DIR, { recursive: true });
+  const dest = path.join(CORBEILLE_DIR, `${nom}.${horodatage()}`);
+  fs.renameSync(chemin, dest);
+  return dest;
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
@@ -97,18 +134,52 @@ async function handleRequest(cfg, req, res) {
       const { filename, content } = JSON.parse(rawBody || '{}');
       const dest = safeStoragePath(filename);
       fs.mkdirSync(STORAGE_DIR, { recursive: true });
+      // Avant d'ecraser, on garde l'ancienne version SUR CE PC. C'est ce qui permet
+      // a l'assistant d'annuler une ecriture sans que le contenu parte jamais ailleurs.
+      const existait = fs.existsSync(dest);
+      if (existait) archiverVersion(dest, path.basename(dest));
       fs.writeFileSync(dest, content ?? '', 'utf8');
-      console.log(`[OK] Document indexé localement : ${filename}`);
-      return sendJson(res, 200, { success: true, filename, size: Buffer.byteLength(content || '') });
+      console.log(`[OK] Document ${existait ? 'mis a jour' : 'cree'} localement : ${filename}`);
+      return sendJson(res, 200, {
+        success: true, filename, size: Buffer.byteLength(content || ''),
+        existait_avant: existait   // le cloud en deduit si annuler = restaurer ou retirer
+      });
     }
 
     if (url.pathname === '/files' && req.method === 'GET') {
       fs.mkdirSync(STORAGE_DIR, { recursive: true });
-      const files = fs.readdirSync(STORAGE_DIR).map((f) => {
-        const st = fs.statSync(path.join(STORAGE_DIR, f));
-        return { filename: f, size: st.size, created_at: st.birthtime };
-      });
+      const files = fs.readdirSync(STORAGE_DIR)
+        .filter((f) => !f.startsWith('.'))   // .historique et .corbeille ne sont pas des documents
+        .map((f) => {
+          const st = fs.statSync(path.join(STORAGE_DIR, f));
+          return { filename: f, size: st.size, created_at: st.birthtime };
+        });
       return sendJson(res, 200, { success: true, documents: files });
+    }
+
+    // Annuler la derniere action de l'assistant sur un fichier local.
+    // operation = 'ecriture'  : on remet la version d'avant (depuis .historique)
+    // operation = 'creation'  : le fichier n'existait pas avant, il part dans .corbeille
+    if (url.pathname === '/annuler' && req.method === 'POST') {
+      const { filename, operation } = JSON.parse(rawBody || '{}');
+      const dest = safeStoragePath(filename);
+      if (!fs.existsSync(dest)) {
+        return sendJson(res, 404, { success: false, error: 'fichier introuvable, rien a annuler' });
+      }
+      if (operation === 'creation') {
+        const vers = corbeille(dest, path.basename(dest));
+        console.log(`[OK] Creation annulee, document mis en corbeille locale : ${filename}`);
+        return sendJson(res, 200, { success: true, annule: true, operation, filename, corbeille: path.basename(vers) });
+      }
+      const precedente = derniereVersion(path.basename(dest));
+      if (!precedente) {
+        return sendJson(res, 409, { success: false, error: 'aucune version precedente conservee pour ce fichier' });
+      }
+      corbeille(dest, path.basename(dest));                   // on garde aussi ce qu'on remplace
+      fs.copyFileSync(precedente, dest);
+      fs.unlinkSync(precedente);
+      console.log(`[OK] Ecriture annulee, version precedente restauree : ${filename}`);
+      return sendJson(res, 200, { success: true, annule: true, operation: 'ecriture', filename });
     }
 
     // Lecture d'un fichier local : indispensable pour les memoires .md
@@ -128,9 +199,12 @@ async function handleRequest(cfg, req, res) {
     if (url.pathname.startsWith('/files/') && req.method === 'DELETE') {
       const filename = decodeURIComponent(url.pathname.slice('/files/'.length));
       const dest = safeStoragePath(filename);
-      if (fs.existsSync(dest)) fs.unlinkSync(dest);
-      console.log(`[OK] Document local supprimé : ${filename}`);
-      return sendJson(res, 200, { success: true, filename });
+      // Plus de suppression definitive : le document part dans storage/.corbeille/.
+      // Rien ne quitte le PC, et une suppression demandee par erreur reste rattrapable.
+      let vers = null;
+      if (fs.existsSync(dest)) vers = corbeille(dest, path.basename(dest));
+      console.log(`[OK] Document local mis en corbeille : ${filename}`);
+      return sendJson(res, 200, { success: true, filename, corbeille: vers ? path.basename(vers) : null });
     }
 
     return sendJson(res, 404, { success: false, error: 'route inconnue' });
