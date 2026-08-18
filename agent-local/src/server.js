@@ -111,6 +111,20 @@ async function handleRequest(cfg, req, res) {
       return sendJson(res, 200, { success: true, documents: files });
     }
 
+    // Lecture d'un fichier local : indispensable pour les memoires .md
+    // (profil-client.md, notes du client) que l'assistant doit pouvoir relire
+    // sans que le fichier ne quitte jamais le PC autrement qu'a la demande.
+    if (url.pathname.startsWith('/files/') && req.method === 'GET') {
+      const filename = decodeURIComponent(url.pathname.slice('/files/'.length));
+      const dest = safeStoragePath(filename);
+      if (!fs.existsSync(dest)) {
+        return sendJson(res, 404, { success: false, error: 'fichier introuvable' });
+      }
+      const content = fs.readFileSync(dest, 'utf8');
+      console.log(`[OK] Document local lu : ${filename}`);
+      return sendJson(res, 200, { success: true, filename, content, size: Buffer.byteLength(content) });
+    }
+
     if (url.pathname.startsWith('/files/') && req.method === 'DELETE') {
       const filename = decodeURIComponent(url.pathname.slice('/files/'.length));
       const dest = safeStoragePath(filename);

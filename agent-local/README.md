@@ -4,7 +4,25 @@ Ce petit programme permet à un client EMDC Copilote de garder **tous ses docume
 
 ---
 
-## Pour ElHadj — générer un kit pour un nouveau client
+## Livraison automatique par l'assistant (voie normale depuis le 18/08/2026)
+
+Le client n'attend plus un envoi manuel. Il demande à EMDC Copilote *« je veux garder mes documents sur mon ordinateur »* ou *« donne-moi mon fichier de configuration »*, et l'agent :
+
+1. appelle l'outil `kit_agent_local` (workflow n8n `SaaS - Kit Agent Local (outil agent)`, id `Mv8z1emB5WqxNwiD`) ;
+2. celui-ci génère un secret unique, bascule le client en `storage_provider = LOCAL_DISK` et enregistre son `local_agent_secret` dans la table `users` (upsert sur `email` : fonctionne même si le client n'avait pas encore de ligne) ;
+3. l'agent renvoie le lien du kit — **https://8643-max.github.io/prompteur-EMDC/agent-local.zip** — le contenu exact de son `agent.config.json`, et les étapes d'installation.
+
+**Le fichier `agent-local.zip` à la racine du dépôt est le kit client.** Il ne contient ni ce README ni `provision-client.js`. **Après toute modification de `src/server.js`, `install.*`, `start.*` ou `LISEZ-MOI.txt`, régénérez-le**, sinon les nouveaux clients installeront une version périmée :
+
+```powershell
+Compress-Archive -Path LISEZ-MOI.txt,install.bat,install.sh,start.bat,start.sh,package.json,agent.config.example.json,src,scripts\download-cloudflared.js -DestinationPath ..\agent-local.zip -Force
+```
+
+⚠️ **Limite connue :** le secret transite dans la conversation, il est donc écrit dans `conversation_logs`. Acceptable tant qu'un compte n'est utilisé que par son titulaire, à revoir pour un accès partagé.
+
+---
+
+## Pour ElHadj — générer un kit à la main (voie de secours)
 
 1. Dans un terminal, à la racine de `agent-local/` :
    ```bash
@@ -48,7 +66,12 @@ Une fois démarré, l'agent se connecte automatiquement au cloud EMDC via un tun
 
 ## Comment ça marche (technique)
 
-- L'agent expose une petite API locale (upload/liste/suppression de fichiers), protégée par une signature HMAC-SHA256 — seul le cloud EMDC (qui connaît le secret du client) peut lui donner des ordres.
+- L'agent expose une petite API locale, protégée par une signature HMAC-SHA256 — seul le cloud EMDC (qui connaît le secret du client) peut lui donner des ordres :
+  - `GET /health` — le seul appel non signé, pour vérifier que l'agent tourne
+  - `POST /files` — déposer un document
+  - `GET /files` — lister les documents
+  - `GET /files/<nom>` — **lire le contenu d'un fichier** (ajouté le 18/08/2026 : indispensable aux mémoires `.md`, dont `profil-client.md`, que l'assistant doit pouvoir relire)
+  - `DELETE /files/<nom>` — supprimer un document
 - Le tunnel (Cloudflare, gratuit, sans compte) rend l'agent joignable depuis le cloud sans exposer le PC du client sur internet ni ouvrir de port.
 - À chaque démarrage, l'agent s'auto-enregistre auprès du cloud EMDC avec sa nouvelle adresse de tunnel (l'adresse change à chaque redémarrage — c'est normal et pris en compte automatiquement).
 - Toutes les opérations sont journalisées dans la fenêtre de l'agent pour transparence.

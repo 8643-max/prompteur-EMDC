@@ -3,7 +3,31 @@
   Vos documents restent sur VOTRE ordinateur
 ═══════════════════════════════════════════
 
-INSTALLATION (une seule fois) :
+CE QUE FAIT CE PROGRAMME
+
+  Il garde vos documents sur votre propre ordinateur, dans le
+  dossier "storage" situé à côté de ce fichier. Vos fichiers
+  ne partent jamais sur internet. EMDC Copilote continue de
+  travailler normalement : il peut déposer un document chez
+  vous, relire vos notes, et répondre à vos questions.
+
+───────────────────────────────────────────
+
+ÉTAPE 1 — VOTRE FICHIER DE CONFIGURATION
+
+  Votre assistant EMDC Copilote vous a remis un fichier nommé
+  "agent.config.json". Déposez-le dans CE dossier, à côté de
+  ce fichier LISEZ-MOI.
+
+  Ce fichier contient votre clé personnelle. Ne le partagez
+  avec personne : il est unique et il vous identifie.
+
+  Vous ne l'avez pas ? Demandez à votre assistant :
+  "Donne-moi mon fichier de configuration pour l'agent local".
+
+───────────────────────────────────────────
+
+ÉTAPE 2 — INSTALLATION (une seule fois)
 
   Windows :
     1. Double-cliquez sur "install.bat"
@@ -18,15 +42,48 @@ INSTALLATION (une seule fois) :
     1. Ouvrez un Terminal dans ce dossier
     2. Tapez : ./install.sh
 
-C'est tout ! Vous pouvez maintenant utiliser EMDC Copilote
-normalement — vos documents ne quittent jamais votre PC.
+  C'est tout. Vous pouvez utiliser EMDC Copilote normalement.
 
 ───────────────────────────────────────────
 
-DÉMARRAGE AUTOMATIQUE AVEC WINDOWS (facultatif) :
+VOS MÉMOIRES ET VOTRE PROFIL
+
+  EMDC Copilote peut retenir qui vous êtes et comment vous
+  aimez travailler. Dites-lui simplement :
+
+      "Personnalise mon assistant"
+
+  Il vous posera six questions, puis enregistrera votre profil
+  dans un fichier "profil-client.md" déposé chez vous, dans le
+  dossier "storage". Vous pouvez l'ouvrir et le modifier avec
+  un simple éditeur de texte : l'assistant relira la version
+  modifiée quand vous le lui demanderez.
+
+  Vous pouvez aussi déposer vous-même vos propres notes dans
+  ce dossier, au format .md ou .txt, et demander à l'assistant
+  de s'en servir.
+
+───────────────────────────────────────────
+
+DÉMARRAGE AUTOMATIQUE AVEC WINDOWS (facultatif)
+
   1. Clic droit sur "start.bat" → Créer un raccourci
   2. Appuyez sur les touches Windows + R, tapez : shell:startup
   3. Déplacez le raccourci dans le dossier qui s'ouvre
+
+───────────────────────────────────────────
+
+COMMENT VOTRE VIE PRIVÉE EST PROTÉGÉE
+
+  - Vos fichiers restent dans le dossier "storage", chez vous.
+  - Seul EMDC Copilote peut parler à votre agent, grâce à la
+    clé de votre fichier de configuration. Une demande non
+    signée est refusée.
+  - Aucun port n'est ouvert sur votre box internet : l'agent
+    se connecte lui-même au cloud EMDC par un tunnel sécurisé.
+  - Tout ce que fait l'agent s'affiche dans la fenêtre noire.
+    Vous pouvez la lire à tout moment pour voir ce qui se passe.
+  - Fermez la fenêtre et tout s'arrête immédiatement.
 
 ───────────────────────────────────────────
 
