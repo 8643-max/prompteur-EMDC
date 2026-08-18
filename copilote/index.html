@@ -170,6 +170,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 .msg-bubble strong{color:var(--gold-muted)}
 .msg-bubble code{background:rgba(0,0,0,.3);padding:1px 5px;border-radius:4px;font-family:"Courier New",monospace;font-size:12px;color:var(--gold-light)}
 .typing-indicator{display:flex;align-items:center;gap:4px;padding:12px 14px}
+.agent-steps{padding:10px 14px 2px;font-size:.92em;line-height:1.75;opacity:.85}
 .typing-dot{width:7px;height:7px;border-radius:50%;background:var(--gold-muted);animation:blink 1.2s ease-in-out infinite}
 .typing-dot:nth-child(2){animation-delay:.25s}
 .typing-dot:nth-child(3){animation-delay:.5s}
@@ -1498,6 +1499,53 @@ function showTyping() {
 }
 function removeTyping() { const t = document.getElementById('typing-msg'); if (t) t.remove(); }
 
+// L'agent raconte son travail au fur et a mesure : chaque etape s'affiche
+// dans la bulle d'attente, dans SA conversation d'origine uniquement.
+function updateSteps(sessionId, etapes) {
+  if (S.currentSessionId !== sessionId) return;
+  const b = document.querySelector('#typing-msg .msg-bubble');
+  if (!b) return;
+  const lignes = (etapes || [])
+    .map(e => '✓ ' + escapeHtml(String((e && e.texte) || '')))
+    .filter(l => l.length > 2)
+    .join('<br>');
+  b.innerHTML = (lignes ? '<div class="agent-steps">' + lignes + '</div>' : '')
+    + '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+  const wrap = document.getElementById('messages-wrap');
+  if (wrap) wrap.scrollTop = wrap.scrollHeight;
+}
+
+// Interroge le suivi toutes les 2 secondes jusqu'au resultat.
+async function suivreJob(jobId, userId, taskSid, ctrl) {
+  const debut = Date.now(), LIMITE = 15 * 60 * 1000;
+  let vues = 0;
+  const stop = () => { const e = new Error('stop'); e.name = 'AbortError'; return e; };
+  while (Date.now() - debut < LIMITE) {
+    await new Promise(s => setTimeout(s, 2000));
+    if (ctrl && ctrl.signal.aborted) throw stop();
+    let j = null;
+    try {
+      const r = await fetch(ASYNC_STATUS_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: jobId, user_id: userId }),
+        signal: ctrl ? ctrl.signal : undefined
+      });
+      if (r.ok) j = await r.json().catch(() => null);
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+    }
+    if (!j) continue; // reseau instable : on retente au prochain tour
+    if (Array.isArray(j.etapes) && j.etapes.length > vues) { vues = j.etapes.length; updateSteps(taskSid, j.etapes); }
+    if (j.statut === 'termine') return j.resultat || null;
+    if (j.statut === 'annule') throw stop();
+    if (j.statut === 'erreur') {
+      return "Je n'ai pas pu terminer votre demande.\n\n**Ce qui a bloqué :** " + (j.erreur || 'erreur inconnue')
+        + "\n\nReformulez votre demande, ou découpez-la en deux étapes et je repars dessus.";
+    }
+  }
+  return "Votre demande tourne depuis longtemps et je n'ai toujours pas de résultat. Réessayez, ou découpez-la en deux étapes.";
+}
+
 function showResultCard(filename, ext, extraction) {
   const icons = {pdf:'📄',xlsx:'📋',xls:'📋',docx:'📝',doc:'📝',pptx:'📊',ppt:'📊',png:'🖼️',jpg:'🖼️',jpeg:'🖼️'};
   const icon = icons[ext] || '📎';
@@ -1525,6 +1573,16 @@ function stopAgent() {
   const t = taskOf(sid);
   if (!t) return;
   t.stoppedByUser = true;
+  // Arreter reellement le travail cote serveur, pas seulement la connexion.
+  if (t.jobId) {
+    try {
+      fetch(ASYNC_STATUS_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: t.jobId, user_id: t.userId || 'guest', action: 'cancel' }),
+        keepalive: true
+      }).catch(() => {});
+    } catch (_) {}
+  }
   try { t.ctrl.abort(); } catch (_) {}
   taskEnd(sid);
   removeTyping();
@@ -1740,17 +1798,17 @@ async function sendMessage() {
   const howtoWords = ['comment','how','wie','cómo','como','come','jinsi'];
 
   const prefs = DB.prefs();
-  const webhookUrl = ASSISTANT_URL; // l'agent traite TOUTES les demandes
   let resp;
-  if (webhookUrl) {
-    // Declares ici : le bloc finally doit pouvoir les voir.
-    let ctrl = null, tid = null;
+  {
+    // L'agent accuse reception en moins d'une seconde, puis travaille en
+    // arriere-plan : on suit son avancement au lieu d'attendre une reponse.
+    let ctrl = null;
     try {
       ctrl = taskStart(taskSid, 'conversation');
-      tid = setTimeout(() => ctrl.abort(), 300000);
+      const uid = S.user?.id || S.user?.email || 'guest';
       const whHeaders = { 'Content-Type': 'application/json' };
       if (prefs.webhookHeaderName && prefs.webhookHeaderValue) whHeaders[prefs.webhookHeaderName] = prefs.webhookHeaderValue;
-      const r = await fetch(webhookUrl, {
+      const r = await fetch(ASYNC_CHAT_URL, {
         method: 'POST',
         headers: whHeaders,
         body: JSON.stringify({
@@ -1758,7 +1816,7 @@ async function sendMessage() {
           message: text,
           user: S.user?.name || 'Invité',
           email: S.user?.email || '',
-          user_id: S.user?.id || S.user?.email || 'guest',
+          user_id: uid,
           session_id: S.currentSessionId || ('guest-' + Date.now().toString(36)),
           history: buildHistoryForAgent(taskSid, text),
           lang: S.lang || 'fr',
@@ -1767,20 +1825,23 @@ async function sendMessage() {
         }),
         signal: ctrl.signal
       });
-      clearTimeout(tid);
       if (r.ok) {
-        const bodyText = await r.text();
-        if (bodyText && bodyText.trim().length > 2) {
-          try { const data = JSON.parse(bodyText); resp = data.response || data.text || data.message || data.output || null; } catch(_) { resp = null; }
+        const data = await r.json().catch(() => null);
+        const jobId = data && data.job_id;
+        if (jobId) {
+          // Memorise sur la tache : le bouton d'arret doit pouvoir annuler
+          // le travail cote serveur, pas seulement fermer la connexion.
+          const t = taskOf(taskSid);
+          if (t) { t.jobId = jobId; t.userId = uid; }
+          resp = await suivreJob(jobId, uid, taskSid, ctrl);
         }
       }
     } catch(e) {
       const t = taskOf(taskSid);
       if (t && t.stoppedByUser) return; // arret demande : message deja affiche
-      if (e.name === 'AbortError') { resp = "La tâche prend trop de temps. Réessayez, ou reformulez votre demande."; }
-      else { resp = null; }
+      if (e.name === 'AbortError') { taskEnd(taskSid); removeTyping(); return; }
+      resp = null;
     } finally {
-      if (tid) clearTimeout(tid);
       taskEnd(taskSid);
     }
   }
@@ -2673,6 +2734,10 @@ function closeRightPanel() { document.getElementById('right-panel').classList.re
 /* ═══ BASE DOCUMENTAIRE RAG ════════════════════════════════════════ */
 const DOCS_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/docs';
 const ASSISTANT_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/assistant';
+// Travail en arriere-plan : l'agent accuse reception tout de suite, puis
+// l'application suit l'avancement. Plus de coupure a 100 secondes.
+const ASYNC_CHAT_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/chat-async';
+const ASYNC_STATUS_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/async/status';
 let _docsSelectedFile = null;
 
 function docsDragOver(e) { e.preventDefault(); document.getElementById('docs-drop-zone').classList.add('drag-over'); }
