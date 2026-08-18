@@ -171,6 +171,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 .msg-bubble code{background:rgba(0,0,0,.3);padding:1px 5px;border-radius:4px;font-family:"Courier New",monospace;font-size:12px;color:var(--gold-light)}
 .typing-indicator{display:flex;align-items:center;gap:4px;padding:12px 14px}
 .agent-steps{padding:10px 14px 2px;font-size:.92em;line-height:1.75;opacity:.85}
+.avertissement-ia{text-align:center;font-size:11px;line-height:1.5;color:var(--text-muted);opacity:.75;padding:7px 12px 2px}
 .capture-vignette{display:block;max-width:220px;width:100%;margin:6px 0;border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
 .capture-vignette:hover{border-color:var(--gold-muted)}
 .typing-dot{width:7px;height:7px;border-radius:50%;background:var(--gold-muted);animation:blink 1.2s ease-in-out infinite}
@@ -638,6 +639,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
           <button class="btn-send" id="btn-send" onclick="sendMessage()">🚀</button>
           <button class="btn-send" id="btn-stop" onclick="stopAgent()" title="Arrêter la tâche en cours" style="display:none;background:#8b2020;border-color:#a33">⏹</button>
         </div>
+        <div class="avertissement-ia">EMDC Copilote est une intelligence artificielle : elle peut se tromper. Vérifiez toujours les sources et le travail réalisé.</div>
       </div>
     </main>
 
