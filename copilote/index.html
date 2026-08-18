@@ -245,6 +245,8 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 .right-panel{background:var(--bg-surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
 .right-panel-header{padding:13px 14px 11px;border-bottom:1px solid var(--border);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-muted);display:flex;align-items:center;gap:8px}
 .btn-close-right{display:none;margin-left:auto;background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:0 2px}
+.btn-agrandir-right{margin-left:auto;background:none;border:none;color:var(--text-muted);font-size:15px;cursor:pointer;padding:0 4px;line-height:1;border-radius:6px}
+.btn-agrandir-right:hover{color:var(--gold);background:var(--gold-dim)}
 .right-panel-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .preview-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;padding:24px}
 .preview-empty-icon{font-size:38px;opacity:.2}
@@ -657,6 +659,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
     <!-- RIGHT PANEL -->
     <aside class="right-panel" id="right-panel">
       <div class="right-panel-header">📁 Résultats
+        <button class="btn-agrandir-right" id="btn-agrandir-right" onclick="basculerTailleResultats()" title="Agrandir le panneau" aria-label="Agrandir le panneau Résultats">⤢</button>
         <button class="btn-close-right" onclick="closeRightPanel()">✕</button>
       </div>
       <div class="right-panel-body">
@@ -3020,6 +3023,34 @@ function closeSidebar() {
   document.getElementById('sidebar').classList.remove('mobile-open');
   const o = document.getElementById('sidebar-overlay'); if(o) o.classList.remove('show');
 }
+/* ── Taille du panneau Resultats ──────────────────────────────────
+   Une seule variable CSS pilote les deux mises en page : la colonne de
+   la grille sur ordinateur, et la largeur du panneau glissant sur mobile.
+   Le choix du client est conserve d une session a l autre. */
+function largeurResultats(agrandi) {
+  if (!agrandi) return '288px';
+  return window.innerWidth < 960 ? '100%' : 'min(760px, 55vw)';
+}
+function appliquerTailleResultats(agrandi) {
+  document.documentElement.style.setProperty('--right-w', largeurResultats(agrandi));
+  const b = document.getElementById('btn-agrandir-right');
+  if (b) {
+    b.textContent = agrandi ? '⤡' : '⤢';
+    b.title = agrandi ? 'Réduire le panneau' : 'Agrandir le panneau';
+    b.setAttribute('aria-label', b.title);
+  }
+}
+function basculerTailleResultats() {
+  const agrandi = !DB.prefs().resultatsAgrandis;
+  savePref('resultatsAgrandis', agrandi);
+  appliquerTailleResultats(agrandi);
+  // sur mobile, agrandir n a de sens que si le panneau est visible
+  if (agrandi && window.innerWidth < 960) document.getElementById('right-panel').classList.add('mobile-open');
+}
+// La largeur cible depend de la taille de l ecran : on la recalcule si elle change
+// (rotation du telephone, fenetre redimensionnee).
+window.addEventListener('resize', () => appliquerTailleResultats(!!DB.prefs().resultatsAgrandis));
+
 function toggleRightPanel() { document.getElementById('right-panel').classList.toggle('mobile-open'); }
 function closeRightPanel() { document.getElementById('right-panel').classList.remove('mobile-open'); }
 
@@ -3218,6 +3249,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
   updateTokenUI();
   updateDropdownAuthState();
   initVocal();
+  appliquerTailleResultats(!!p.resultatsAgrandis);
   // Retour de paiement Stripe (succès/annulation)
   const _paiementParam = new URLSearchParams(window.location.search).get('paiement');
   if (_paiementParam === 'succes') {
