@@ -1516,7 +1516,9 @@ function updateSteps(sessionId, etapes) {
 }
 
 // Interroge le suivi toutes les 2 secondes jusqu'au resultat.
-async function suivreJob(jobId, userId, taskSid, ctrl) {
+// brut = true : renvoie { statut, resultat, erreur } au lieu d'un texte, pour
+// que l'appelant distingue une vraie reponse d'un echec (analyse de fichier).
+async function suivreJob(jobId, userId, taskSid, ctrl, brut) {
   const debut = Date.now(), LIMITE = 15 * 60 * 1000;
   let vues = 0;
   const stop = () => { const e = new Error('stop'); e.name = 'AbortError'; return e; };
@@ -1536,14 +1538,16 @@ async function suivreJob(jobId, userId, taskSid, ctrl) {
     }
     if (!j) continue; // reseau instable : on retente au prochain tour
     if (Array.isArray(j.etapes) && j.etapes.length > vues) { vues = j.etapes.length; updateSteps(taskSid, j.etapes); }
-    if (j.statut === 'termine') return j.resultat || null;
+    if (j.statut === 'termine') return brut ? { statut: 'termine', resultat: j.resultat || null } : (j.resultat || null);
     if (j.statut === 'annule') throw stop();
     if (j.statut === 'erreur') {
-      return "Je n'ai pas pu terminer votre demande.\n\n**Ce qui a bloqué :** " + (j.erreur || 'erreur inconnue')
+      const msg = "Je n'ai pas pu terminer votre demande.\n\n**Ce qui a bloqué :** " + (j.erreur || 'erreur inconnue')
         + "\n\nReformulez votre demande, ou découpez-la en deux étapes et je repars dessus.";
+      return brut ? { statut: 'erreur', erreur: msg } : msg;
     }
   }
-  return "Votre demande tourne depuis longtemps et je n'ai toujours pas de résultat. Réessayez, ou découpez-la en deux étapes.";
+  const tropLong = "Votre demande tourne depuis longtemps et je n'ai toujours pas de résultat. Réessayez, ou découpez-la en deux étapes.";
+  return brut ? { statut: 'erreur', erreur: tropLong } : tropLong;
 }
 
 function showResultCard(filename, ext, extraction) {
@@ -1608,15 +1612,16 @@ async function analyzeFileWithAgent(file, question, sessionId) {
   });
 
   const sid = sessionId || S.currentSessionId;
+  const uid = S.user?.id || S.user?.email || 'guest';
   const ctrl = taskStart(sid, 'analyse');
-  const tid = setTimeout(() => ctrl.abort(), 300000);
   try {
-    const r = await fetch(ASSISTANT_URL, {
+    // Meme principe que le chat : accuse de reception immediat, puis suivi.
+    // Un fichier lourd peut demander plusieurs minutes d'analyse.
+    const r = await fetch(ASYNC_ANALYSE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action: 'analyze_document',
-        user_id: S.user?.id || S.user?.email || 'guest',
+        user_id: uid,
         email: S.user?.email || '',
         session_id: sid || ('guest-' + Date.now().toString(36)),
         file_type: fileType,
@@ -1627,21 +1632,24 @@ async function analyzeFileWithAgent(file, question, sessionId) {
       }),
       signal: ctrl.signal,
     });
-    clearTimeout(tid);
-    const txt = await r.text();
-    if (!txt || txt.trim().length < 2) return { error: null };
-    let data; try { data = JSON.parse(txt); } catch (_) { return { error: null }; }
-    if (data.extraction) return { extraction: data.extraction };
-    if (data.response) return { extraction: data.response };
-    if (data.error) return { error: data.error };
-    return { error: null };
+    if (!r.ok) return { error: null };
+    const data = await r.json().catch(() => null);
+    const jobId = data && data.job_id;
+    if (!jobId) return { error: null };
+    const t = taskOf(sid);
+    if (t) { t.jobId = jobId; t.userId = uid; }
+    const sortie = await suivreJob(jobId, uid, sid, ctrl, true);
+    if (!sortie) return { error: null };
+    if (sortie.statut === 'erreur') return { error: sortie.erreur };
+    if (!sortie.resultat) return { error: null };
+    return { extraction: sortie.resultat };
   } catch (e) {
-    clearTimeout(tid);
     const t = taskOf(sid);
     if (t && t.stoppedByUser) return { stopped: true };
-    return { error: e.name === 'AbortError' ? "L'analyse a pris trop de temps. Réessayez avec un fichier plus léger." : null };
+    if (e.name === 'AbortError') return { stopped: true };
+    return { error: null };
   } finally {
-    clearTimeout(tid); taskEnd(sid);
+    taskEnd(sid);
   }
 }
 
@@ -2738,6 +2746,7 @@ const ASSISTANT_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/assistant';
 // l'application suit l'avancement. Plus de coupure a 100 secondes.
 const ASYNC_CHAT_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/chat-async';
 const ASYNC_STATUS_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/async/status';
+const ASYNC_ANALYSE_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/analyse-async';
 let _docsSelectedFile = null;
 
 function docsDragOver(e) { e.preventDefault(); document.getElementById('docs-drop-zone').classList.add('drag-over'); }
