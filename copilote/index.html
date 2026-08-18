@@ -247,6 +247,8 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 .btn-close-right{display:none;margin-left:auto;background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:0 2px}
 .btn-agrandir-right{margin-left:auto;background:none;border:none;color:var(--text-muted);font-size:15px;cursor:pointer;padding:0 4px;line-height:1;border-radius:6px}
 .btn-agrandir-right:hover{color:var(--gold);background:var(--gold-dim)}
+.btn-annuler-action{margin-top:12px;width:100%;padding:9px;border-radius:9px;border:1px solid var(--border-strong);background:var(--bg-elevated);color:var(--text-secondary);font-size:12.5px;cursor:pointer;transition:border-color .15s,color .15s}
+.btn-annuler-action:hover{border-color:var(--gold);color:var(--gold)}
 .btn-masquer-right{background:none;border:none;color:var(--text-muted);font-size:14px;cursor:pointer;padding:0 4px;line-height:1;border-radius:6px}
 .btn-masquer-right:hover{color:var(--gold);background:var(--gold-dim)}
 .right-panel.masque{display:none}
@@ -1631,6 +1633,28 @@ function escapeHtml(s) {
   return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+/* ── Annuler la derniere action de l agent ─────────────────────────
+   Le bouton ne fait rien de special : il pose la demande dans la conversation,
+   comme si le client l avait ecrite. L agent decide, agit et rend compte, et le
+   client garde la trace ecrite de ce qu il a demande. */
+function demanderAnnulation() {
+  const input = document.getElementById('chat-input');
+  if (!input || taskIsRunning(S.currentSessionId)) return;
+  input.value = 'Annule ce que tu viens de faire.';
+  autoResize(input);
+  sendMessage();
+}
+function ajouterBoutonAnnuler() {
+  const carte = document.getElementById('result-card');
+  if (!carte || carte.querySelector('.btn-annuler-action')) return;
+  const b = document.createElement('button');
+  b.className = 'btn-annuler-action'; b.type = 'button';
+  b.textContent = '↩️ Annuler cette action';
+  b.title = "Demander à l'assistant de défaire ce qu'il vient de faire";
+  b.onclick = demanderAnnulation;
+  carte.appendChild(b);
+}
+
 // Rend cliquables les adresses presentes dans un texte deja echappe.
 // Une capture d'ecran s'affiche en vignette plutot qu'en longue adresse :
 // le client voit ce que l'agent a vu.
@@ -1666,6 +1690,7 @@ function showWorkResultCard(demande, etapes, resultat) {
     '<div><div class="result-section-title">Ce que j\'ai fait</div><div class="result-section-body">' + liste + '</div></div>' +
     '<div><div class="result-section-title">Résultat</div><div class="result-section-body">' +
     lienCliquable(markdownLite(escapeHtml(texte))) + '</div></div>';
+  ajouterBoutonAnnuler();
   if (!resultatsMasques() && window.innerWidth < 960) document.getElementById('right-panel').classList.add('mobile-open');
 }
 
