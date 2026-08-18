@@ -247,6 +247,12 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 .btn-close-right{display:none;margin-left:auto;background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:0 2px}
 .btn-agrandir-right{margin-left:auto;background:none;border:none;color:var(--text-muted);font-size:15px;cursor:pointer;padding:0 4px;line-height:1;border-radius:6px}
 .btn-agrandir-right:hover{color:var(--gold);background:var(--gold-dim)}
+.btn-masquer-right{background:none;border:none;color:var(--text-muted);font-size:14px;cursor:pointer;padding:0 4px;line-height:1;border-radius:6px}
+.btn-masquer-right:hover{color:var(--gold);background:var(--gold-dim)}
+.right-panel.masque{display:none}
+/* Panneau masque : le bouton de l en-tete devient la seule porte de retour,
+   donc il doit rester visible aussi sur ordinateur. */
+body.resultats-masques .btn-show-right{display:flex}
 .right-panel-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .preview-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;padding:24px}
 .preview-empty-icon{font-size:38px;opacity:.2}
@@ -660,6 +666,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
     <aside class="right-panel" id="right-panel">
       <div class="right-panel-header">📁 Résultats
         <button class="btn-agrandir-right" id="btn-agrandir-right" onclick="basculerTailleResultats()" title="Agrandir le panneau" aria-label="Agrandir le panneau Résultats">⤢</button>
+        <button class="btn-masquer-right" onclick="masquerResultats()" title="Masquer le panneau (plus de place pour la conversation)" aria-label="Masquer le panneau Résultats">🚫</button>
         <button class="btn-close-right" onclick="closeRightPanel()">✕</button>
       </div>
       <div class="right-panel-body">
@@ -1433,18 +1440,20 @@ function addMsgUI(role, text, save = true) {
   const bubble = document.createElement('div'); bubble.className = 'msg-bubble';
   bubble.innerHTML = markdownLite(text);
   div.appendChild(av); div.appendChild(bubble); wrap.appendChild(div);
-  // Bouton d ecoute sur chaque reponse : utile meme si la lecture auto est coupee.
+  // Bouton d ecoute sur chaque reponse : il lance ET arrete la lecture.
+  let btnLire = null;
   if (role === 'assistant' && typeof lectureDisponible === 'function' && lectureDisponible()) {
-    const b = document.createElement('button');
-    b.className = 'btn-lire'; b.type = 'button';
-    b.textContent = '🔊'; b.title = 'Lire cette réponse à voix haute';
-    b.setAttribute('aria-label', 'Lire cette réponse à voix haute');
-    b.onclick = function () { lireDernierMessage(this); };
-    b.style.cssText += ';align-self:flex-end;margin:0 0 2px';
-    div.appendChild(b);
+    btnLire = document.createElement('button');
+    btnLire.className = 'btn-lire'; btnLire.type = 'button';
+    btnLire.textContent = '🔊'; btnLire.title = 'Lire cette réponse à voix haute';
+    btnLire.setAttribute('aria-label', btnLire.title);
+    btnLire.onclick = function () { lireDernierMessage(this); };
+    btnLire.style.cssText += ';align-self:flex-end;margin:0 0 2px';
+    div.appendChild(btnLire);
   }
   setTimeout(() => wrap.scrollTop = wrap.scrollHeight, 50);
-  if (role === 'assistant') { playNotifSound(); lireReponse(text); }
+  // La lecture automatique passe par le meme bouton : il affiche ⏹ et reste cliquable pour arreter.
+  if (role === 'assistant') { playNotifSound(); lireReponse(text, btnLire); }
   if (save && S.currentSessionId) saveMessageToSession(role, text);
 }
 
@@ -1616,7 +1625,7 @@ function showResultCard(filename, ext, extraction) {
   document.getElementById('rc-sections').innerHTML =
     '<div><div class="result-section-title">Analyse</div><div class="result-section-body">' +
     markdownLite(escapeHtml(extraction)) + '</div></div>';
-  if (window.innerWidth < 960) document.getElementById('right-panel').classList.add('mobile-open');
+  if (!resultatsMasques() && window.innerWidth < 960) document.getElementById('right-panel').classList.add('mobile-open');
 }
 function escapeHtml(s) {
   return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1657,7 +1666,7 @@ function showWorkResultCard(demande, etapes, resultat) {
     '<div><div class="result-section-title">Ce que j\'ai fait</div><div class="result-section-body">' + liste + '</div></div>' +
     '<div><div class="result-section-title">Résultat</div><div class="result-section-body">' +
     lienCliquable(markdownLite(escapeHtml(texte))) + '</div></div>';
-  if (window.innerWidth < 960) document.getElementById('right-panel').classList.add('mobile-open');
+  if (!resultatsMasques() && window.innerWidth < 960) document.getElementById('right-panel').classList.add('mobile-open');
 }
 
 /* ═══ CONTROLE DE L'AGENT (arret a la demande du client) ════════════ */
@@ -1668,6 +1677,7 @@ function stopAgent() {
   const t = taskOf(sid);
   if (!t) return;
   t.stoppedByUser = true;
+  stopperLecture(); // on arrete aussi l annonce vocale des etapes
   // Arreter reellement le travail cote serveur, pas seulement la connexion.
   if (t.jobId) {
     try {
@@ -2426,7 +2436,22 @@ function basculerDictee() { V.ecoute ? arreterDictee() : demarrerDictee(); }
 
 /* ── Lecture a voix haute ── */
 function lectureDisponible() { return typeof window.speechSynthesis !== 'undefined'; }
-function stopperLecture() { try { if (lectureDisponible()) speechSynthesis.cancel(); } catch (e) {} }
+function paroleEnCours() { try { return lectureDisponible() && (speechSynthesis.speaking || speechSynthesis.pending); } catch (e) { return false; } }
+
+// Bouton qui a declenche la lecture en cours : on lui rend son icone quand ca s arrete,
+// de quelque facon que ce soit (fin naturelle, arret demande, erreur).
+let _btnParole = null;
+function rendreBouton(b) {
+  if (!b) return;
+  b.textContent = '🔊'; b.title = 'Lire cette réponse à voix haute';
+  b.setAttribute('aria-label', b.title);
+  if (_btnParole === b) _btnParole = null;
+}
+function stopperLecture() {
+  try { if (lectureDisponible()) speechSynthesis.cancel(); } catch (e) {}
+  rendreBouton(_btnParole);
+  document.querySelectorAll('.btn-lire').forEach(rendreBouton); // filet de securite
+}
 
 // Retire le markdown et les adresses : on lit une phrase, pas du code.
 function texteLisible(t) {
@@ -2440,13 +2465,20 @@ function texteLisible(t) {
     .trim();
 }
 
-function parler(texte, couper) {
+function parler(texte, couper, btn) {
   if (!lectureDisponible()) return;
   const t = texteLisible(texte).slice(0, 700); // au-dela, on ne lit pas un roman
   if (!t) return;
   try {
-    if (couper) speechSynthesis.cancel();
+    if (couper) stopperLecture();
     const u = new SpeechSynthesisUtterance(t);
+    if (btn) {
+      _btnParole = btn;
+      btn.textContent = '⏹'; btn.title = 'Arrêter la lecture';
+      btn.setAttribute('aria-label', btn.title);
+      u.onend = () => rendreBouton(btn);
+      u.onerror = () => rendreBouton(btn);
+    }
     u.lang = langueVocale();
     u.rate = 1.02;
     const v = (speechSynthesis.getVoices() || []).find(x => x.lang === u.lang)
@@ -2456,7 +2488,7 @@ function parler(texte, couper) {
   } catch (e) {}
 }
 
-function lireReponse(texte) { if (DB.prefs().lectureVoix) parler(texte, true); }
+function lireReponse(texte, btn) { if (DB.prefs().lectureVoix) parler(texte, true, btn); }
 
 // Annonce uniquement les etapes pas encore dites pour cette conversation.
 function annoncerEtapes(sessionId, etapes) {
@@ -2467,9 +2499,16 @@ function annoncerEtapes(sessionId, etapes) {
   V.etapesDites.set(sessionId, liste.length);
 }
 
+// Le bouton fait les deux : il lance la lecture, et il l arrete si elle est en cours.
+// Un clic sur le bouton d une AUTRE reponse coupe la lecture actuelle et lit la nouvelle.
 function lireDernierMessage(btn) {
+  if (paroleEnCours()) {
+    const memeBouton = (_btnParole === btn);
+    stopperLecture();
+    if (memeBouton) return; // on voulait juste arreter
+  }
   const bulle = btn && btn.parentElement && btn.parentElement.querySelector('.msg-bubble');
-  if (bulle) parler(bulle.textContent, true);
+  if (bulle) parler(bulle.textContent, false, btn);
 }
 
 function initVocal() {
@@ -2493,6 +2532,11 @@ function initVocal() {
   if (lectureDisponible() && speechSynthesis.getVoices().length === 0) {
     speechSynthesis.onvoiceschanged = () => {};
   }
+  // Echap coupe toute lecture en cours, y compris l annonce des etapes qui
+  // n a pas de bouton a elle. Sur mobile, le bouton ⏹ de la reponse reste la voie principale.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && paroleEnCours()) { stopperLecture(); infoDictee('Lecture arrêtée.'); }
+  });
 }
 
 /* ── UPLOAD ZONE DISMISS ─────────────────────────────────────────── */
@@ -3027,12 +3071,18 @@ function closeSidebar() {
    Une seule variable CSS pilote les deux mises en page : la colonne de
    la grille sur ordinateur, et la largeur du panneau glissant sur mobile.
    Le choix du client est conserve d une session a l autre. */
-function largeurResultats(agrandi) {
-  if (!agrandi) return '288px';
+function resultatsMasques() { return !!DB.prefs().resultatsMasques; }
+function largeurResultats() {
+  if (resultatsMasques()) return '0px';
+  if (!DB.prefs().resultatsAgrandis) return '288px';
   return window.innerWidth < 960 ? '100%' : 'min(760px, 55vw)';
 }
-function appliquerTailleResultats(agrandi) {
-  document.documentElement.style.setProperty('--right-w', largeurResultats(agrandi));
+function appliquerTailleResultats() {
+  const masque = resultatsMasques(), agrandi = !!DB.prefs().resultatsAgrandis;
+  document.documentElement.style.setProperty('--right-w', largeurResultats());
+  const p = document.getElementById('right-panel');
+  if (p) p.classList.toggle('masque', masque);
+  document.body.classList.toggle('resultats-masques', masque);
   const b = document.getElementById('btn-agrandir-right');
   if (b) {
     b.textContent = agrandi ? '⤡' : '⤢';
@@ -3041,17 +3091,34 @@ function appliquerTailleResultats(agrandi) {
   }
 }
 function basculerTailleResultats() {
-  const agrandi = !DB.prefs().resultatsAgrandis;
-  savePref('resultatsAgrandis', agrandi);
-  appliquerTailleResultats(agrandi);
+  savePref('resultatsAgrandis', !DB.prefs().resultatsAgrandis);
+  appliquerTailleResultats();
   // sur mobile, agrandir n a de sens que si le panneau est visible
-  if (agrandi && window.innerWidth < 960) document.getElementById('right-panel').classList.add('mobile-open');
+  if (DB.prefs().resultatsAgrandis && window.innerWidth < 960)
+    document.getElementById('right-panel').classList.add('mobile-open');
+}
+// Masquer completement : toute la largeur revient a la conversation. Le travail de
+// l agent continue d etre enregistre dans le panneau, il est juste hors de vue.
+function masquerResultats() {
+  savePref('resultatsMasques', true);
+  const p = document.getElementById('right-panel');
+  if (p) p.classList.remove('mobile-open');
+  appliquerTailleResultats();
+  showToast('Panneau Résultats masqué. Touchez « 📁 Résultats » en haut pour le retrouver.', 4000);
+}
+function afficherResultats() {
+  savePref('resultatsMasques', false);
+  appliquerTailleResultats();
+  if (window.innerWidth < 960) document.getElementById('right-panel').classList.add('mobile-open');
 }
 // La largeur cible depend de la taille de l ecran : on la recalcule si elle change
 // (rotation du telephone, fenetre redimensionnee).
-window.addEventListener('resize', () => appliquerTailleResultats(!!DB.prefs().resultatsAgrandis));
+window.addEventListener('resize', appliquerTailleResultats);
 
-function toggleRightPanel() { document.getElementById('right-panel').classList.toggle('mobile-open'); }
+function toggleRightPanel() {
+  if (resultatsMasques()) { afficherResultats(); return; } // le bouton de l en-tete le fait revenir
+  document.getElementById('right-panel').classList.toggle('mobile-open');
+}
 function closeRightPanel() { document.getElementById('right-panel').classList.remove('mobile-open'); }
 
 /* ═══ BASE DOCUMENTAIRE RAG ════════════════════════════════════════ */
@@ -3249,7 +3316,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
   updateTokenUI();
   updateDropdownAuthState();
   initVocal();
-  appliquerTailleResultats(!!p.resultatsAgrandis);
+  appliquerTailleResultats();
   // Retour de paiement Stripe (succès/annulation)
   const _paiementParam = new URLSearchParams(window.location.search).get('paiement');
   if (_paiementParam === 'succes') {
