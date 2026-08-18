@@ -1449,6 +1449,9 @@ function maintenanceMessage() {
    basculer d'outil ou de conversation, en lancer une autre : chaque
    reponse revient se ranger dans SA conversation d'origine.          */
 const _tasks = new Map(); // sessionId -> { ctrl, stoppedByUser, label }
+// Etapes du dernier travail de chaque conversation : servent a remplir le
+// panneau Resultats une fois la tache terminee.
+const _etapesParSession = new Map();
 
 function taskStart(sessionId, label) {
   const ctrl = new AbortController();
@@ -1537,7 +1540,10 @@ async function suivreJob(jobId, userId, taskSid, ctrl, brut) {
       if (e.name === 'AbortError') throw e;
     }
     if (!j) continue; // reseau instable : on retente au prochain tour
-    if (Array.isArray(j.etapes) && j.etapes.length > vues) { vues = j.etapes.length; updateSteps(taskSid, j.etapes); }
+    if (Array.isArray(j.etapes) && j.etapes.length) {
+      _etapesParSession.set(taskSid, j.etapes);
+      if (j.etapes.length > vues) { vues = j.etapes.length; updateSteps(taskSid, j.etapes); }
+    }
     if (j.statut === 'termine') return brut ? { statut: 'termine', resultat: j.resultat || null } : (j.resultat || null);
     if (j.statut === 'annule') throw stop();
     if (j.statut === 'erreur') {
@@ -1567,6 +1573,36 @@ function showResultCard(filename, ext, extraction) {
 }
 function escapeHtml(s) {
   return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Rend cliquables les adresses presentes dans un texte deja echappe.
+function lienCliquable(html) {
+  return String(html || '').replace(/(https?:\/\/[^\s<]+)/g,
+    u => '<a href="' + u + '" target="_blank" rel="noopener" style="color:var(--gold);word-break:break-all">' + u + '</a>');
+}
+
+// Panneau Resultats pour tout travail de l'agent : navigation web, document
+// cree, recherche documentaire. Le client y retrouve ce qui a ete fait, pas
+// seulement la reponse finale qui defile dans la conversation.
+function showWorkResultCard(demande, etapes, resultat) {
+  const texte = String(resultat || '');
+  const estDoc = /docs\.google|drive\.google|document/i.test(texte);
+  document.getElementById('preview-empty').style.display = 'none';
+  const card = document.getElementById('result-card');
+  card.classList.add('show');
+  document.getElementById('rc-icon').textContent = estDoc ? '📄' : '🌐';
+  document.getElementById('rc-name').textContent = String(demande || 'Travail de l\'agent').slice(0, 70);
+  document.getElementById('rc-meta').textContent =
+    new Date().toLocaleString('fr-FR') + ' · ' + etapes.length + (etapes.length > 1 ? ' étapes' : ' étape');
+  const conf = document.getElementById('rc-conf'); if (conf) conf.style.display = 'none';
+  const liste = etapes
+    .map(e => '<div style="margin-bottom:4px">✓ ' + escapeHtml(String((e && e.texte) || '')) + '</div>')
+    .join('');
+  document.getElementById('rc-sections').innerHTML =
+    '<div><div class="result-section-title">Ce que j\'ai fait</div><div class="result-section-body">' + liste + '</div></div>' +
+    '<div><div class="result-section-title">Résultat</div><div class="result-section-body">' +
+    lienCliquable(markdownLite(escapeHtml(texte))) + '</div></div>';
+  if (window.innerWidth < 960) document.getElementById('right-panel').classList.add('mobile-open');
 }
 
 /* ═══ CONTROLE DE L'AGENT (arret a la demande du client) ════════════ */
@@ -1855,11 +1891,20 @@ async function sendMessage() {
   }
 
   // Aucune reponse automatique : si l'agent ne repond pas, on le dit franchement.
+  const venuDuSuivi = !!resp;
   if (!resp) { resp = maintenanceMessage(); _failStreak++; }
   else { _failStreak = 0; }
 
   removeTyping();
   deliverToSession(taskSid, resp);
+
+  // L'agent a utilise ses outils : le detail va dans le panneau Resultats.
+  const etapesJob = _etapesParSession.get(taskSid) || [];
+  _etapesParSession.delete(taskSid);
+  if (venuDuSuivi && etapesJob.length && S.currentSessionId === taskSid) {
+    showWorkResultCard(text, etapesJob, resp);
+  }
+
   setTimeout(refreshSupaTokens, 800);
 }
 
