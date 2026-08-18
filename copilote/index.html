@@ -227,6 +227,14 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 .input-row{display:flex;gap:8px;align-items:flex-end}
 .btn-icon{width:38px;height:38px;border-radius:9px;background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-secondary);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color .15s,color .15s;flex-shrink:0}
 .btn-icon:hover{border-color:var(--gold);color:var(--gold)}
+/* ── DICTEE VOCALE ── */
+#btn-micro.ecoute{background:#7a1f1f;border-color:#c33;color:#ffd9d9;animation:pulseMicro 1.25s ease-in-out infinite}
+@keyframes pulseMicro{0%,100%{box-shadow:0 0 0 0 rgba(204,51,51,.55)}50%{box-shadow:0 0 0 7px rgba(204,51,51,0)}}
+#dictee-info{display:none;font-size:11px;color:var(--text-muted);padding:5px 2px 0;line-height:1.4}
+#dictee-info.on{display:block}
+.btn-lire{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:13px;padding:2px 5px;margin-top:5px;border-radius:6px;line-height:1}
+.btn-lire:hover{color:var(--gold);background:var(--gold-dim)}
+@media (prefers-reduced-motion:reduce){#btn-micro.ecoute{animation:none}}
 #chat-input{flex:1;min-height:38px;max-height:120px;padding:9px 13px;background:var(--bg-input);border:1px solid var(--border);border-radius:9px;color:var(--text-primary);font-size:13.5px;resize:none;outline:none;font-family:inherit;line-height:1.5;transition:border-color .2s}
 #chat-input:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-dim)}
 #chat-input::placeholder{color:var(--text-muted)}
@@ -634,11 +642,14 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
             <div class="btn-icon" style="position:absolute;inset:0;pointer-events:none">📎</div>
             <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.docx,.doc,.pptx,.ppt,.xlsx,.xls" onchange="onFileSelect(event)" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0" title="Joindre un fichier"/>
           </div>
+          <!-- Dictee vocale : masque tant que le navigateur ne la supporte pas (Firefox) -->
+          <button class="btn-icon" id="btn-micro" onclick="basculerDictee()" title="Dicter votre message" style="display:none">🎤</button>
           <textarea id="chat-input" rows="1" placeholder="Posez une question..." onkeydown="handleKey(event)" oninput="autoResize(this)" onpaste="onPasteFile(event)"></textarea>
           <span id="tasks-indicator" style="display:none;font-size:11px;color:var(--gold);align-self:center;margin-right:6px;white-space:nowrap"></span>
           <button class="btn-send" id="btn-send" onclick="sendMessage()">🚀</button>
           <button class="btn-send" id="btn-stop" onclick="stopAgent()" title="Arrêter la tâche en cours" style="display:none;background:#8b2020;border-color:#a33">⏹</button>
         </div>
+        <div id="dictee-info"></div>
         <div class="avertissement-ia">EMDC Copilote est une intelligence artificielle : elle peut se tromper. Vérifiez toujours les sources et le travail réalisé.</div>
       </div>
     </main>
@@ -767,6 +778,20 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
         <div class="srow">
           <div class="srow-left"><div class="srow-label">Son activé</div><div class="srow-desc">Notification sonore à chaque réponse</div></div>
           <label class="toggle"><input type="checkbox" id="s-sound" onchange="savePref('sound',this.checked)"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+      <div class="sgroup">
+        <div class="sgroup-title">Vocal</div>
+        <div class="srow">
+          <div class="srow-left"><div class="srow-label">Lire les réponses à voix haute</div><div class="srow-desc">L'assistant vous lit sa réponse quand elle arrive</div></div>
+          <label class="toggle"><input type="checkbox" id="s-lecture" onchange="savePref('lectureVoix',this.checked)"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="srow">
+          <div class="srow-left"><div class="srow-label">Annoncer les étapes à voix haute</div><div class="srow-desc">Il dit ce qu'il fait pendant qu'il travaille, sans regarder l'écran</div></div>
+          <label class="toggle"><input type="checkbox" id="s-etapes-voix" onchange="savePref('etapesVoix',this.checked)"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="srow" id="srow-dictee-note" style="display:none">
+          <div class="srow-left"><div class="srow-desc" id="dictee-note-texte"></div></div>
         </div>
       </div>
       <div class="sgroup">
@@ -1405,8 +1430,18 @@ function addMsgUI(role, text, save = true) {
   const bubble = document.createElement('div'); bubble.className = 'msg-bubble';
   bubble.innerHTML = markdownLite(text);
   div.appendChild(av); div.appendChild(bubble); wrap.appendChild(div);
+  // Bouton d ecoute sur chaque reponse : utile meme si la lecture auto est coupee.
+  if (role === 'assistant' && typeof lectureDisponible === 'function' && lectureDisponible()) {
+    const b = document.createElement('button');
+    b.className = 'btn-lire'; b.type = 'button';
+    b.textContent = '🔊'; b.title = 'Lire cette réponse à voix haute';
+    b.setAttribute('aria-label', 'Lire cette réponse à voix haute');
+    b.onclick = function () { lireDernierMessage(this); };
+    b.style.cssText += ';align-self:flex-end;margin:0 0 2px';
+    div.appendChild(b);
+  }
   setTimeout(() => wrap.scrollTop = wrap.scrollHeight, 50);
-  if (role === 'assistant') playNotifSound();
+  if (role === 'assistant') { playNotifSound(); lireReponse(text); }
   if (save && S.currentSessionId) saveMessageToSession(role, text);
 }
 
@@ -1510,6 +1545,7 @@ function removeTyping() { const t = document.getElementById('typing-msg'); if (t
 // dans la bulle d'attente, dans SA conversation d'origine uniquement.
 function updateSteps(sessionId, etapes) {
   if (S.currentSessionId !== sessionId) return;
+  annoncerEtapes(sessionId, etapes); // l agent pense a voix haute, si le client l a active
   const b = document.querySelector('#typing-msg .msg-bubble');
   if (!b) return;
   const lignes = (etapes || [])
@@ -1783,6 +1819,8 @@ const R = {
 
 /* ═══ SEND MESSAGE ══════════════════════════════════════════════════ */
 async function sendMessage() {
+  arreterDictee();  // on n ecoute plus une fois le message parti
+  stopperLecture(); // et on coupe une lecture en cours
   const input = document.getElementById('chat-input');
   const text = input.value.trim();
   const hasFile = !!S.pendingFile;
@@ -2269,6 +2307,191 @@ function playNotifSound() {
     osc.start(ctx.currentTime); osc.stop(ctx.currentTime+0.5);
   } catch(e){}
 }
+/* ── VOCAL : dictee (parole -> texte) et lecture (texte -> parole) ──
+   Tout se fait dans le navigateur : aucun jeton consomme, aucun appel a n8n.
+   Limite honnete a annoncer au client : la reconnaissance vocale des navigateurs
+   envoie l audio chez Apple (Safari) ou Google (Chrome). Ce n est pas du traitement
+   local. Un client qui a installe l agent local pour la confidentialite doit le savoir. */
+
+// Le francais reste la voix de repli : les navigateurs ne reconnaissent ni le wolof,
+// ni le pular, ni le bambara. Mieux vaut dicter en francais que rien du tout.
+const VOIX_LANGUES = { fr:'fr-FR', en:'en-US', es:'es-ES', pt:'pt-BR', de:'de-DE', it:'it-IT',
+  tr:'tr-TR', nl:'nl-NL', sw:'sw-KE', ha:'ha-NG', wo:'fr-FR', ff:'fr-FR', bm:'fr-FR' };
+const LANGUES_NON_RECONNUES = { wo:'wolof', ff:'pular', bm:'bambara' };
+
+const V = { rec:null, ecoute:false, acquis:'', arretVoulu:false, etapesDites:new Map() };
+
+function langueVocale() { return VOIX_LANGUES[S.lang] || 'fr-FR'; }
+function dicteeDisponible() { return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
+
+function infoDictee(msg, garder) {
+  const el = document.getElementById('dictee-info');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.classList.toggle('on', !!msg);
+  clearTimeout(el._t);
+  if (msg && !garder) el._t = setTimeout(() => { el.textContent=''; el.classList.remove('on'); }, 6000);
+}
+
+function majBoutonMicro() {
+  const b = document.getElementById('btn-micro');
+  if (!b) return;
+  b.classList.toggle('ecoute', V.ecoute);
+  b.textContent = V.ecoute ? '⏹' : '🎤';
+  b.title = V.ecoute ? 'Arrêter la dictée' : 'Dicter votre message';
+}
+
+function creerReconnaissance() {
+  const R = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const rec = new R();
+  rec.lang = langueVocale();
+  rec.interimResults = true;
+  rec.continuous = true;   // ignore par Safari iOS : d ou la relance sur onend
+  rec.maxAlternatives = 1;
+
+  rec.onstart = () => { V.ecoute = true; majBoutonMicro(); };
+
+  rec.onresult = (ev) => {
+    let provisoire = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const r = ev.results[i];
+      if (r.isFinal) {
+        const t = String(r[0].transcript || '').trim();
+        if (t) V.acquis = (V.acquis ? V.acquis + ' ' : '') + t;
+      } else {
+        provisoire += r[0].transcript;
+      }
+    }
+    const input = document.getElementById('chat-input');
+    if (!input) return;
+    input.value = (V.acquis + (provisoire ? ' ' + provisoire : '')).replace(/\s+/g, ' ').trim();
+    autoResize(input);
+  };
+
+  rec.onerror = (ev) => {
+    const e = ev.error;
+    if (e === 'not-allowed' || e === 'service-not-allowed') {
+      V.arretVoulu = true; V.ecoute = false; majBoutonMicro();
+      infoDictee("🎤 Micro refusé. Autorisez le microphone pour ce site dans les réglages de votre navigateur, puis réessayez.", true);
+    } else if (e === 'audio-capture') {
+      V.arretVoulu = true; V.ecoute = false; majBoutonMicro();
+      infoDictee("🎤 Aucun micro détecté sur cet appareil.", true);
+    } else if (e === 'network') {
+      infoDictee("La dictée a besoin d'internet. Vérifiez votre connexion.");
+    }
+    // 'no-speech' et 'aborted' : silencieux, onend relancera l ecoute.
+  };
+
+  // Safari iOS et Chrome Android coupent l ecoute des qu il y a un silence.
+  // On relance tant que le client n a pas appuye sur stop : sinon la dictee
+  // s arrete toute seule au milieu d une phrase.
+  rec.onend = () => {
+    if (V.arretVoulu) { V.ecoute = false; majBoutonMicro(); return; }
+    try { rec.start(); } catch (e) { V.ecoute = false; majBoutonMicro(); }
+  };
+
+  return rec;
+}
+
+function demarrerDictee() {
+  if (!dicteeDisponible()) return;
+  stopperLecture(); // ne pas s ecouter soi-meme
+  const input = document.getElementById('chat-input');
+  V.acquis = input && input.value ? input.value.trim() : '';
+  V.arretVoulu = false;
+  try {
+    V.rec = creerReconnaissance();
+    V.rec.start();
+  } catch (e) {
+    infoDictee("La dictée n'a pas pu démarrer. Réessayez.");
+    return;
+  }
+  const nonRec = LANGUES_NON_RECONNUES[S.lang];
+  infoDictee(nonRec
+    ? 'Parlez, votre voix s\'écrit. La dictée ne reconnaît pas encore le ' + nonRec + ' : elle écoute en français.'
+    : 'Parlez, votre voix s\'écrit. Touchez ⏹ quand vous avez fini.', true);
+}
+
+function arreterDictee() {
+  if (!V.rec) return;
+  V.arretVoulu = true;
+  try { V.rec.stop(); } catch (e) {}
+  V.ecoute = false; majBoutonMicro(); infoDictee('');
+}
+
+function basculerDictee() { V.ecoute ? arreterDictee() : demarrerDictee(); }
+
+/* ── Lecture a voix haute ── */
+function lectureDisponible() { return typeof window.speechSynthesis !== 'undefined'; }
+function stopperLecture() { try { if (lectureDisponible()) speechSynthesis.cancel(); } catch (e) {} }
+
+// Retire le markdown et les adresses : on lit une phrase, pas du code.
+function texteLisible(t) {
+  return String(t || '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')  // liens markdown -> on ne garde que le libelle
+    .replace(/https?:\/\/\S+/g, '')           // adresses restantes : illisibles a voix haute
+    .replace(/[*_`#>|]/g, '')
+    .replace(/[()[\]]/g, ' ')
+    .replace(/[-–—]{2,}/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parler(texte, couper) {
+  if (!lectureDisponible()) return;
+  const t = texteLisible(texte).slice(0, 700); // au-dela, on ne lit pas un roman
+  if (!t) return;
+  try {
+    if (couper) speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(t);
+    u.lang = langueVocale();
+    u.rate = 1.02;
+    const v = (speechSynthesis.getVoices() || []).find(x => x.lang === u.lang)
+           || (speechSynthesis.getVoices() || []).find(x => x.lang && x.lang.slice(0,2) === u.lang.slice(0,2));
+    if (v) u.voice = v;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+
+function lireReponse(texte) { if (DB.prefs().lectureVoix) parler(texte, true); }
+
+// Annonce uniquement les etapes pas encore dites pour cette conversation.
+function annoncerEtapes(sessionId, etapes) {
+  if (!DB.prefs().etapesVoix) return;
+  const deja = V.etapesDites.get(sessionId) || 0;
+  const liste = etapes || [];
+  for (let i = deja; i < liste.length; i++) parler((liste[i] && liste[i].texte) || '', false);
+  V.etapesDites.set(sessionId, liste.length);
+}
+
+function lireDernierMessage(btn) {
+  const bulle = btn && btn.parentElement && btn.parentElement.querySelector('.msg-bubble');
+  if (bulle) parler(bulle.textContent, true);
+}
+
+function initVocal() {
+  const b = document.getElementById('btn-micro');
+  const note = document.getElementById('srow-dictee-note');
+  const noteTxt = document.getElementById('dictee-note-texte');
+  if (dicteeDisponible()) {
+    if (b) b.style.display = '';
+    if (note && noteTxt) {
+      note.style.display = '';
+      noteTxt.textContent = "🎤 La dictée utilise la reconnaissance vocale de votre navigateur : l'audio est envoyé à Apple (Safari) ou Google (Chrome) pour être transcrit. Vos documents, eux, ne partent pas.";
+    }
+  } else if (note && noteTxt) {
+    note.style.display = '';
+    noteTxt.textContent = "🎤 Votre navigateur ne gère pas la dictée vocale (c'est le cas de Firefox). Utilisez Chrome, Edge ou Safari pour en profiter.";
+  }
+  const p = DB.prefs();
+  const l = document.getElementById('s-lecture'); if (l) l.checked = !!p.lectureVoix;
+  const e = document.getElementById('s-etapes-voix'); if (e) e.checked = !!p.etapesVoix;
+  // Certains navigateurs chargent les voix de facon asynchrone.
+  if (lectureDisponible() && speechSynthesis.getVoices().length === 0) {
+    speechSynthesis.onvoiceschanged = () => {};
+  }
+}
+
 /* ── UPLOAD ZONE DISMISS ─────────────────────────────────────────── */
 document.addEventListener('click', function(e) {
   const zone=document.getElementById('upload-zone');
@@ -2994,6 +3217,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
   if(p.lang) { applyLang(p.lang); const sel=document.getElementById('s-lang-select'); if(sel)sel.value=p.lang; }
   updateTokenUI();
   updateDropdownAuthState();
+  initVocal();
   // Retour de paiement Stripe (succès/annulation)
   const _paiementParam = new URLSearchParams(window.location.search).get('paiement');
   if (_paiementParam === 'succes') {
