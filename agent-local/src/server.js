@@ -5,6 +5,7 @@
  * en local, tout en restant piloté par le cloud EMDC via un tunnel sécurisé.
  */
 const http = require('http');
+const https = require('https');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -245,7 +246,11 @@ function registerWithCloud(cfg, tunnelUrl) {
   const rawBody = JSON.stringify(bodyObj);
   const sig = crypto.createHmac('sha256', cfg.secret).update(`${ts}.${rawBody}`).digest('hex');
 
-  const req = http.request(cfg.register_url, {
+  // register_url est en https : le module http de Node refuse ce protocole et
+  // leve ERR_INVALID_PROTOCOL, ce qui faisait planter l'agent au demarrage.
+  const client = String(cfg.register_url || '').startsWith('https:') ? https : http;
+
+  const req = client.request(cfg.register_url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
