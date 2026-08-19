@@ -802,6 +802,13 @@ body.resultats-masques .btn-show-right{display:flex}
           <div class="srow-left"><div class="srow-label">Annoncer les étapes à voix haute</div><div class="srow-desc">Il dit ce qu'il fait pendant qu'il travaille, sans regarder l'écran</div></div>
           <label class="toggle"><input type="checkbox" id="s-etapes-voix" onchange="savePref('etapesVoix',this.checked)"><span class="toggle-slider"></span></label>
         </div>
+      </div>
+      <div class="sgroup">
+        <div class="sgroup-title">Moteur de traitement</div>
+        <div class="srow">
+          <div class="srow-left"><div class="srow-label">File d'attente (essai)</div><div class="srow-desc">Découpe votre demande en sous-tâches traitées une par une. Utile pour les demandes qui enchaînent plusieurs actions.</div></div>
+          <label class="toggle"><input type="checkbox" id="s-file-attente" onchange="savePref('fileAttente',this.checked)"><span class="toggle-slider"></span></label>
+        </div>
         <div class="srow" id="srow-dictee-note" style="display:none">
           <div class="srow-left"><div class="srow-desc" id="dictee-note-texte"></div></div>
         </div>
@@ -1944,7 +1951,7 @@ async function sendMessage() {
       const uid = S.user?.id || S.user?.email || 'guest';
       const whHeaders = { 'Content-Type': 'application/json' };
       if (prefs.webhookHeaderName && prefs.webhookHeaderValue) whHeaders[prefs.webhookHeaderName] = prefs.webhookHeaderValue;
-      const r = await fetch(ASYNC_CHAT_URL, {
+      const r = await fetch(urlDuMoteur(), {
         method: 'POST',
         headers: whHeaders,
         body: JSON.stringify({
@@ -2553,6 +2560,7 @@ function initVocal() {
   const p = DB.prefs();
   const l = document.getElementById('s-lecture'); if (l) l.checked = !!p.lectureVoix;
   const e = document.getElementById('s-etapes-voix'); if (e) e.checked = !!p.etapesVoix;
+  const fa = document.getElementById('s-file-attente'); if (fa) fa.checked = !!p.fileAttente;
   // Certains navigateurs chargent les voix de facon asynchrone.
   if (lectureDisponible() && speechSynthesis.getVoices().length === 0) {
     speechSynthesis.onvoiceschanged = () => {};
@@ -3152,6 +3160,11 @@ const ASSISTANT_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/assistant';
 // Travail en arriere-plan : l'agent accuse reception tout de suite, puis
 // l'application suit l'avancement. Plus de coupure a 100 secondes.
 const ASYNC_CHAT_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/chat-async';
+// Second moteur, en essai : la demande est d abord decoupee en sous-taches, traitees
+// une par une. Les deux repondent un job_id et se suivent avec le meme saas/async/status,
+// donc basculer de l un a l autre ne change rien au reste de l application.
+const ASYNC_FILE_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/chat-queue';
+function urlDuMoteur() { return DB.prefs().fileAttente ? ASYNC_FILE_URL : ASYNC_CHAT_URL; }
 const ASYNC_STATUS_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/async/status';
 const ASYNC_ANALYSE_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/analyse-async';
 let _docsSelectedFile = null;
