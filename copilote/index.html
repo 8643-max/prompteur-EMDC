@@ -652,6 +652,13 @@ body.resultats-masques .btn-show-right{display:flex}
             <div class="btn-icon" style="position:absolute;inset:0;pointer-events:none">📎</div>
             <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.docx,.doc,.pptx,.ppt,.xlsx,.xls" onchange="onFileSelect(event)" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0" title="Joindre un fichier"/>
           </div>
+          <!-- Photo : capture="environment" ouvre directement l appareil photo sur
+               telephone. Sur ordinateur, cela retombe sur le selecteur de fichiers.
+               Meme montage que le bouton fichier : input transparent superpose, fiable sur iOS. -->
+          <div style="position:relative;width:38px;height:38px;flex-shrink:0" id="zone-photo">
+            <div class="btn-icon" style="position:absolute;inset:0;pointer-events:none">📷</div>
+            <input type="file" id="photo-input" accept="image/*" capture="environment" onchange="onPhotoPrise(event)" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0" title="Prendre une photo"/>
+          </div>
           <!-- Dictee vocale : masque tant que le navigateur ne la supporte pas (Firefox) -->
           <button class="btn-icon" id="btn-micro" onclick="basculerDictee()" title="Dicter votre message" style="display:none">🎤</button>
           <textarea id="chat-input" rows="1" placeholder="Posez une question..." onkeydown="handleKey(event)" oninput="autoResize(this)" onpaste="onPasteFile(event)"></textarea>
@@ -802,13 +809,13 @@ body.resultats-masques .btn-show-right{display:flex}
           <div class="srow-left"><div class="srow-label">Annoncer les étapes à voix haute</div><div class="srow-desc">Il dit ce qu'il fait pendant qu'il travaille, sans regarder l'écran</div></div>
           <label class="toggle"><input type="checkbox" id="s-etapes-voix" onchange="savePref('etapesVoix',this.checked)"><span class="toggle-slider"></span></label>
         </div>
+        <div class="sfield">
+          <label>Voix de lecture</label>
+          <select class="sselect" id="s-voix" onchange="changerVoix(this.value)"></select>
+          <small style="color:var(--text-muted);font-size:10px;margin-top:4px;display:block" id="s-voix-info"></small>
+        </div>
       </div>
       <div class="sgroup">
-        <div class="sgroup-title">Moteur de traitement</div>
-        <div class="srow">
-          <div class="srow-left"><div class="srow-label">File d'attente (essai)</div><div class="srow-desc">Découpe votre demande en sous-tâches traitées une par une. Utile pour les demandes qui enchaînent plusieurs actions.</div></div>
-          <label class="toggle"><input type="checkbox" id="s-file-attente" onchange="savePref('fileAttente',this.checked)"><span class="toggle-slider"></span></label>
-        </div>
         <div class="srow" id="srow-dictee-note" style="display:none">
           <div class="srow-left"><div class="srow-desc" id="dictee-note-texte"></div></div>
         </div>
@@ -908,6 +915,16 @@ body.resultats-masques .btn-show-right{display:flex}
 
     <!-- CONNEXIONS -->
     <div class="settings-tab-content" id="stab-connexions">
+      <!-- Reglages sous le controle exclusif d'EMDC : cet onglet n'est visible
+           que par le compte administrateur. Tout nouveau reglage qui ne doit pas
+           etre touche par un client se place ici. -->
+      <div class="sgroup">
+        <div class="sgroup-title">Moteur de traitement</div>
+        <div class="srow">
+          <div class="srow-left"><div class="srow-label">File d'attente (essai)</div><div class="srow-desc">Découpe la demande en sous-tâches traitées une par une. Réservé à EMDC : les clients gardent le moteur habituel.</div></div>
+          <label class="toggle"><input type="checkbox" id="s-file-attente" onchange="savePref('fileAttente',this.checked)"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
       <div class="sgroup">
         <div class="sgroup-title">Moteur IA (interne EMDC)</div>
         <div class="sfield"><label>URL du webhook</label><input class="sinput" id="s-webhook" placeholder="https://..." oninput="savePref('webhookUrl',this.value)"/></div>
@@ -2019,6 +2036,26 @@ function setMode(m) {
 const FICONS = {pdf:'📄',png:'🖼️',jpg:'🖼️',jpeg:'🖼️',docx:'📝',doc:'📝',pptx:'📊',ppt:'📊',xlsx:'📋',xls:'📋'};
 function toggleUpload() { document.getElementById('upload-zone').classList.toggle('show'); }
 function triggerFileInput() { document.getElementById('file-input').click(); }
+
+/* Photo prise depuis l appareil : elle rejoint le meme circuit qu un fichier joint.
+   On renomme le fichier avec la date, car les telephones renvoient souvent "image.jpg". */
+function onPhotoPrise(e) {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  let photo = f;
+  try {
+    const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
+    const nom = 'photo-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.' + ext;
+    photo = new File([f], nom, { type: f.type || 'image/jpeg' });
+  } catch (err) { photo = f; }
+  showFile(photo);
+  e.target.value = '';   // sinon reprendre la meme photo ne declenche rien
+  if (S.mode !== 'vision') {
+    showToast("Photo ajoutée. Activez ⚡ Vision Avancée pour que je l'analyse.", 4500);
+  } else {
+    showToast('Photo ajoutée. Dites-moi ce que vous voulez savoir dessus.', 3500);
+  }
+}
 function onDragOver(e) { e.preventDefault(); document.getElementById('upload-zone').classList.add('drag-over'); }
 function onDragLeave() { document.getElementById('upload-zone').classList.remove('drag-over'); }
 function onDrop(e) { e.preventDefault(); document.getElementById('upload-zone').classList.remove('drag-over'); const f=e.dataTransfer.files[0]; if(f)showFile(f); }
@@ -2468,6 +2505,56 @@ function basculerDictee() { V.ecoute ? arreterDictee() : demarrerDictee(); }
 
 /* ── Lecture a voix haute ── */
 function lectureDisponible() { return typeof window.speechSynthesis !== 'undefined'; }
+
+/* ── Choix de la voix ──────────────────────────────────────────────
+   getVoices() est souvent VIDE au premier appel : les navigateurs chargent la
+   liste de facon asynchrone. Sans voix choisie, le navigateur prend sa voix par
+   defaut, souvent anglophone — d ou l accent desagreable. On garde donc la liste
+   en memoire des qu elle arrive, et on prefere les voix francaises les plus
+   naturelles disponibles sur l appareil. */
+let _voixDispo = [];
+function chargerVoix() {
+  if (!lectureDisponible()) return;
+  try { _voixDispo = speechSynthesis.getVoices() || []; } catch (e) { _voixDispo = []; }
+  remplirChoixVoix();
+}
+function voixDeLaLangue(lang) {
+  const base = String(lang || 'fr-FR').slice(0, 2).toLowerCase();
+  return _voixDispo.filter(v => v.lang && v.lang.replace('_', '-').slice(0, 2).toLowerCase() === base);
+}
+// Voix francaises reconnues comme les plus agreables selon les plateformes.
+const VOIX_PREFEREES = ['Amélie', 'Amelie', 'Audrey', 'Thomas', 'Marie', 'Denise', 'Henri',
+                        'Google français', 'Microsoft', 'Siri'];
+function choisirVoix(lang) {
+  if (!_voixDispo.length) chargerVoix();
+  const liste = voixDeLaLangue(lang);
+  if (!liste.length) return null;
+  const choisie = DB.prefs().voixChoisie;
+  if (choisie) { const v = liste.find(x => x.voiceURI === choisie); if (v) return v; }
+  for (const nom of VOIX_PREFEREES) {
+    const v = liste.find(x => (x.name || '').toLowerCase().indexOf(nom.toLowerCase()) > -1);
+    if (v) return v;
+  }
+  return liste.find(v => v.lang.replace('_', '-') === lang) || liste[0];
+}
+function remplirChoixVoix() {
+  const sel = document.getElementById('s-voix');
+  if (!sel) return;
+  const liste = voixDeLaLangue(langueVocale());
+  const actuelle = DB.prefs().voixChoisie || '';
+  sel.innerHTML = '<option value="">Voix automatique (recommandée)</option>'
+    + liste.map(v => '<option value="' + escapeHtml(v.voiceURI) + '"'
+        + (v.voiceURI === actuelle ? ' selected' : '') + '>' + escapeHtml(v.name) + '</option>').join('');
+  const info = document.getElementById('s-voix-info');
+  if (info) info.textContent = liste.length
+    ? liste.length + ' voix française(s) disponible(s) sur cet appareil.'
+    : "Aucune voix française installée sur cet appareil : la lecture gardera l'accent par défaut du navigateur.";
+}
+function changerVoix(uri) {
+  savePref('voixChoisie', uri || '');
+  stopperLecture();
+  parler('Voici comment je vais vous lire les réponses.', true);
+}
 function paroleEnCours() { try { return lectureDisponible() && (speechSynthesis.speaking || speechSynthesis.pending); } catch (e) { return false; } }
 
 // Bouton qui a declenche la lecture en cours : on lui rend son icone quand ca s arrete,
@@ -2512,10 +2599,10 @@ function parler(texte, couper, btn) {
       u.onerror = () => rendreBouton(btn);
     }
     u.lang = langueVocale();
-    u.rate = 1.02;
-    const v = (speechSynthesis.getVoices() || []).find(x => x.lang === u.lang)
-           || (speechSynthesis.getVoices() || []).find(x => x.lang && x.lang.slice(0,2) === u.lang.slice(0,2));
-    if (v) u.voice = v;
+    u.rate = 0.98;   // un peu plus pose : plus naturel a l oreille que 1.02
+    u.pitch = 1;
+    const v = choisirVoix(u.lang);
+    if (v) { u.voice = v; u.lang = v.lang; }
     speechSynthesis.speak(u);
   } catch (e) {}
 }
@@ -2561,9 +2648,11 @@ function initVocal() {
   const l = document.getElementById('s-lecture'); if (l) l.checked = !!p.lectureVoix;
   const e = document.getElementById('s-etapes-voix'); if (e) e.checked = !!p.etapesVoix;
   const fa = document.getElementById('s-file-attente'); if (fa) fa.checked = !!p.fileAttente;
-  // Certains navigateurs chargent les voix de facon asynchrone.
-  if (lectureDisponible() && speechSynthesis.getVoices().length === 0) {
-    speechSynthesis.onvoiceschanged = () => {};
+  // Les voix arrivent de facon asynchrone : on recharge la liste des qu elle change.
+  if (lectureDisponible()) {
+    chargerVoix();
+    speechSynthesis.onvoiceschanged = chargerVoix;
+    setTimeout(chargerVoix, 800);   // Safari iOS ne declenche pas toujours l evenement
   }
   // Echap coupe toute lecture en cours, y compris l annonce des etapes qui
   // n a pas de bouton a elle. Sur mobile, le bouton ⏹ de la reponse reste la voie principale.
