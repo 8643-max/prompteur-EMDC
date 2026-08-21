@@ -120,6 +120,12 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 .tool-item:hover{background:var(--bg-hover);color:var(--text-primary)}
 .tool-item.active{background:var(--gold-dim);color:var(--gold);border:1px solid var(--border)}
 .tool-item .tool-icon{font-size:15px;flex-shrink:0}
+/* Ou en est l'agent : l'outil en cours pulse, ceux deja empruntes restent marques. */
+.tool-item.agent-actif{background:var(--gold-dim);color:var(--gold)}
+.tool-item.agent-passe{color:var(--gold)}
+.tool-agent-dot{width:7px;height:7px;border-radius:50%;background:var(--gold);margin-left:auto;flex-shrink:0;opacity:.35}
+.tool-item.agent-actif .tool-agent-dot{opacity:1;animation:tool-pulse 1.1s ease-in-out infinite}
+@keyframes tool-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.2;transform:scale(.65)}}
 .history-empty{font-size:12px;color:var(--text-muted);text-align:center;padding:16px 8px;font-style:italic}
 
 /* history item */
@@ -1570,6 +1576,7 @@ function deliverToSession(sessionId, text) {
 function markdownLite(t) { return t.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/`(.+?)`/g,'<code>$1</code>').replace(/\n/g,'<br>'); }
 
 function showTyping() {
+  effacerRefletOutils(); // nouvelle demande : le chemin precedent s'efface
   const wrap = document.getElementById('messages-wrap');
   const div = document.createElement('div'); div.className = 'msg assistant'; div.id = 'typing-msg';
   const av = document.createElement('div'); av.className = 'msg-avatar'; av.style.cssText='background:var(--bg-elevated);border:1px solid var(--border-strong);overflow:hidden;border-radius:50%'; const avImg=document.createElement('img'); avImg.src=LOGO; avImg.style.cssText='width:100%;height:100%;object-fit:cover'; av.appendChild(avImg);
@@ -1578,13 +1585,88 @@ function showTyping() {
   div.appendChild(av); div.appendChild(b); wrap.appendChild(div);
   setTimeout(() => wrap.scrollTop = wrap.scrollHeight, 50);
 }
-function removeTyping() { const t = document.getElementById('typing-msg'); if (t) t.remove(); }
+function removeTyping() { figerRefletOutils(); const t = document.getElementById('typing-msg'); if (t) t.remove(); }
+
+/* ── Ou en est l'agent, dans le menu des outils ────────────────
+   Chaque outil ecrit LUI-MEME son etape dans jobs.etapes, avec un libelle
+   qu'il compose : la premiere ligne est donc deterministe, et on peut
+   reconnaitre l'outil sans deviner sur du texte genere par le modele.
+   On ne lit que cette premiere ligne : la suite contient le contenu ramene
+   du web ou d'un document, ou n'importe quel mot pourrait apparaitre.
+
+   Cout : aucun. Les etapes arrivent deja en direct par Supabase Realtime.
+
+   Deux entrees du menu partagent le meme outil reel : Recherche documentaire
+   et Base documentaire pointent toutes deux sur base_documentaire. Les deux
+   s'allument donc ensemble -- c'est assume, faute de distinction cote outil. */
+const OUTILS_ETAPES = [
+  { motif: /navigation sur |navigu|captures? :/i,                    ids: ['tool-navigation'] },
+  { motif: /^analyse de |analyse du fichier|^traitement de /i,       ids: ['tool-analyse'] },
+  { motif: /j enregistre |base documentaire|recherche document|dans vos documents/i,
+                                                                     ids: ['tool-documents', 'tool-recherche'] },
+  { motif: /pr[eé]sentation|diapo|slides?\b/i,                       ids: ['tool-presentation'] },
+  { motif: /tableau|feuille de calcul|sheets?\b/i,                    ids: ['tool-sheet'] },
+];
+
+function effacerRefletOutils() {
+  document.querySelectorAll('.tool-item').forEach(el => {
+    el.classList.remove('agent-actif', 'agent-passe');
+    const d = el.querySelector('.tool-agent-dot');
+    if (d) d.remove();
+  });
+}
+
+// Fige le chemin parcouru quand le travail est fini : plus rien ne clignote,
+// mais le client garde sous les yeux les outils qui ont servi.
+function figerRefletOutils() {
+  document.querySelectorAll('.tool-item.agent-actif').forEach(el => {
+    el.classList.remove('agent-actif');
+    el.classList.add('agent-passe');
+  });
+}
+
+function refletOutils(etapes) {
+  if (!Array.isArray(etapes)) return;
+  const passes = [];
+  let actifs = [];
+  for (const e of etapes) {
+    // Premiere ligne seulement : c'est le libelle ecrit par l'outil.
+    const tete = String((e && e.texte) || '').split('\n')[0].slice(0, 140);
+    let trouve = [];
+    for (const r of OUTILS_ETAPES) if (r.motif.test(tete)) trouve = trouve.concat(r.ids);
+    if (!trouve.length) continue;
+    for (const id of actifs) if (!passes.includes(id)) passes.push(id);
+    actifs = trouve;
+  }
+  effacerRefletOutils();
+  if (!actifs.length) return;
+
+  const marquer = (id, cls) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add(cls);
+    const dot = document.createElement('span');
+    dot.className = 'tool-agent-dot';
+    el.appendChild(dot);
+  };
+  passes.forEach(id => { if (!actifs.includes(id)) marquer(id, 'agent-passe'); });
+  actifs.forEach(id => marquer(id, 'agent-actif'));
+
+  // Quatre outils vivent dans la partie repliee du menu : inutile d'allumer
+  // une ligne que le client ne voit pas. On deplie si besoin.
+  const extra = document.getElementById('tools-extra');
+  if (extra && extra.style.display === 'none'
+      && actifs.some(id => { const el = document.getElementById(id); return el && extra.contains(el); })) {
+    toggleMoreTools(true);
+  }
+}
 
 // L'agent raconte son travail au fur et a mesure : chaque etape s'affiche
 // dans la bulle d'attente, dans SA conversation d'origine uniquement.
 function updateSteps(sessionId, etapes) {
   if (S.currentSessionId !== sessionId) return;
   annoncerEtapes(sessionId, etapes); // l agent pense a voix haute, si le client l a active
+  refletOutils(etapes);              // et le menu montre l outil qu il est en train d employer
   const b = document.querySelector('#typing-msg .msg-bubble');
   if (!b) return;
   const lignes = (etapes || [])
