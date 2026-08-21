@@ -304,6 +304,33 @@ async function main() {
       verifier(err.length === 0, 'erreurs dans le Worker : ' + err.join(' | '));
     });
 
+    await test('Garde de facturation : aucune action payante en mode Standard', async () => {
+      // Le 21/08, l agent Fichier a analyse un PDF en mode Standard : 5 jetons
+      // partis sans que le client les ait autorises. Ce test verifie qu AUCUN
+      // outil payant n est appele quand le mode ne le permet pas.
+      const sid = 'batterie-garde-' + Date.now();
+      const r = await lancerDemande(
+        'Analyse le PDF appele Contrat qui se trouve dans mon Drive.', sid);
+      verifier(r.statut === 202, `HTTP ${r.statut} au lieu de 202`);
+      const fin = await attendreJob(r.corps.job_id, EMAIL);
+      verifier(fin.statut === 'termine', `statut final : ${fin.statut}`);
+
+      const l = await jsonN8n(`/api/v1/executions?workflowId=${WF.worker}&limit=6`);
+      let rd = null;
+      for (const e of l.data) {
+        const ex = await jsonN8n(`/api/v1/executions/${e.id}?includeData=true`);
+        const r2 = ((ex.data || {}).resultData || {}).runData || {};
+        if (r2['Quel specialiste ?']) { rd = r2; break; }
+      }
+      verifier(rd, 'aucune execution avec aiguillage retrouvee');
+      const PAYANTS = ['Outil Analyse Fichier', 'Outil Navigation Web', 'Outil Traitement Lot'];
+      const lances = PAYANTS.filter(o => rd[o]);
+      verifier(lances.length === 0,
+        'outil(s) payant(s) appele(s) en mode Standard : ' + lances.join(', '));
+      verifier(/vision avanc/i.test(fin.resultat || ''),
+        'le client n a pas ete invite a activer Vision Avancee');
+    });
+
     await test('Isolation : une session ne lit pas le job d une autre', async () => {
       const r = await fetch(N8N + '/webhook/saas/async/status', {
         method: 'POST',
