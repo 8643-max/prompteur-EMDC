@@ -3766,8 +3766,38 @@ async function afterSupaAuth(user) {
   launchApp(nom, user.email, DB.prefs().profilePhoto || '', DB.prefs().lang || 'fr');
 }
 
+// Le solde vit dans la table token_balances de Supabase (user_id = email).
+// Le lire via n8n coutait DEUX executions -- Routeur Central appelle Facturation
+// par Jetons en sous-workflow -- apres chaque message ET a chaque chargement de
+// page. Le navigateur le lit maintenant lui-meme, comme il lit deja jobs.
+// La politique RLS n'accorde que la LECTURE de sa propre ligne : debits et
+// recharges restent cote n8n avec la cle service_role.
+let _soldeDirectIndisponible = false;
+
 async function refreshSupaTokens() {
   if (!S.user?.email) return;
+
+  if (_supa && !_soldeDirectIndisponible) {
+    try {
+      const { data, error } = await _supa
+        .from('token_balances')
+        .select('balance')
+        .eq('user_id', S.user.email)
+        .maybeSingle();
+      if (!error && data && data.balance !== null && data.balance !== undefined) {
+        S.tokens = Number(data.balance);
+        updateTokenUI();
+        return;
+      }
+      // Zero ligne sans erreur = politique RLS absente, ou compte sans solde
+      // enregistre. Dans les deux cas n8n sait repondre : on lui laisse la main
+      // et on ne repaye plus la tentative pour le reste de la session.
+      _soldeDirectIndisponible = true;
+    } catch (e) {
+      _soldeDirectIndisponible = true;
+    }
+  }
+
   try {
     const r = await fetch(ASSISTANT_URL, {
       method: 'POST',
