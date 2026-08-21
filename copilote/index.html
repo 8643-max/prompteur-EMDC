@@ -186,7 +186,8 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 .upload-text strong{color:var(--text-primary);display:block;font-size:13px}
 .upload-formats{font-size:10.5px;color:var(--text-muted);margin-top:3px}
 .upload-preview{display:none;margin:0 18px 8px;background:var(--bg-elevated);border:1px solid var(--border-strong);border-radius:8px;padding:9px 12px;align-items:center;gap:10px}
-.upload-preview.show{display:flex}
+.upload-preview.show{display:flex;flex-direction:column;gap:7px}
+.upload-file-row{display:flex;align-items:center;gap:10px;width:100%}
 /* ── DOCS PANEL ── */
 .docs-panel{padding:14px;display:none;flex-direction:column;gap:14px}
 .docs-panel.show{display:flex}
@@ -632,15 +633,12 @@ body.resultats-masques .btn-show-right{display:flex}
       </div>
       <div class="upload-zone" id="upload-zone" onclick="triggerFileInput()" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragleave="onDragLeave(event)">
         <span class="upload-icon">📎</span>
-        <div class="upload-text"><strong>Déposez votre fichier ici</strong>Cliquez ou glissez un fichier pour l'analyser
-          <div class="upload-formats">PDF · PNG · JPG · DOCX · PPTX · XLSX</div>
+        <div class="upload-text"><strong>Déposez vos fichiers ici</strong>Cliquez ou glissez jusqu'à 5 fichiers à analyser
+          <div class="upload-formats">PDF · PNG · JPG · texte et code (.txt .md .csv .json .py …)</div>
         </div>
       </div>
-      <div class="upload-preview" id="upload-preview">
-        <span id="upi-icon" style="font-size:22px">📄</span>
-        <div style="flex:1;min-width:0"><div class="upload-preview-name" id="upi-name">fichier.pdf</div><div class="upload-preview-size" id="upi-size">—</div></div>
-        <button class="upload-preview-remove" onclick="removeFile()">✕</button>
-      </div>
+      <!-- Liste des fichiers joints : jusqu'a MAX_FICHIERS, rendue par rendreFichiers() -->
+      <div class="upload-preview" id="upload-preview"></div>
       <div class="input-bar">
         <div class="mode-switcher">
           <button class="mode-btn standard active" id="mode-standard" onclick="setMode('standard')"><span class="mode-dot"></span><span class="mode-label"> Mode Standard </span><span class="mode-cost">Gratuit</span></button>
@@ -650,7 +648,7 @@ body.resultats-masques .btn-show-right{display:flex}
           <!-- Bouton fichier : input transparent superposé, fiable sur iOS Safari -->
           <div style="position:relative;width:38px;height:38px;flex-shrink:0">
             <div class="btn-icon" style="position:absolute;inset:0;pointer-events:none">📎</div>
-            <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.markdown,.csv,.tsv,.log,.json,.xml,.yml,.yaml,.ini,.conf,.cfg,.env,.example,.toml,.js,.mjs,.cjs,.ts,.tsx,.jsx,.py,.rb,.php,.java,.c,.h,.cpp,.hpp,.cs,.go,.rs,.swift,.kt,.r,.lua,.sql,.sh,.bash,.zsh,.bat,.cmd,.ps1,.html,.htm,.css,.scss,.less,.vue,.svelte" onchange="onFileSelect(event)" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0" title="Joindre un fichier"/>
+            <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.markdown,.csv,.tsv,.log,.json,.xml,.yml,.yaml,.ini,.conf,.cfg,.env,.example,.toml,.js,.mjs,.cjs,.ts,.tsx,.jsx,.py,.rb,.php,.java,.c,.h,.cpp,.hpp,.cs,.go,.rs,.swift,.kt,.r,.lua,.sql,.sh,.bash,.zsh,.bat,.cmd,.ps1,.html,.htm,.css,.scss,.less,.vue,.svelte" multiple onchange="onFileSelect(event)" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0" title="Joindre des fichiers (5 maximum)"/>
           </div>
           <!-- Photo : capture="environment" ouvre directement l appareil photo sur
                telephone. Sur ordinateur, cela retombe sur le selecteur de fichiers.
@@ -1185,7 +1183,7 @@ const S = {
   user: null, tokens: 0,
   mode: 'standard', currentTool: 'general',
   currentSessionId: null, pendingSession: null,
-  hasFile: false, pendingFile: null,
+  hasFile: false, pendingFiles: [],
   memoryEnabled: true,
   webhookUrl: 'https://eldji8643.app.n8n.cloud/webhook/saas/chat'
 };
@@ -2055,7 +2053,8 @@ async function sendMessage() {
   stopperLecture(); // et on coupe une lecture en cours
   const input = document.getElementById('chat-input');
   const text = input.value.trim();
-  const hasFile = !!S.pendingFile;
+  const fichiers = S.pendingFiles.slice();
+  const hasFile = fichiers.length > 0;
   if (!text && !hasFile) return;
 
   // Premier message d'un utilisateur non connecté → invite à créer son profil
@@ -2078,64 +2077,97 @@ async function sendMessage() {
   const isFirst = !S.currentSessionId;
   if (isFirst) {
     if (S.pendingSession) {
-      commitSession(text || (S.pendingFile?.name || 'Analyse fichier'));
+      commitSession(text || (fichiers[0] && fichiers[0].name) || 'Analyse fichier');
     }
   }
 
-  // Build user message
+  // Build user message : la liste des noms, un par ligne.
+  const listeNoms = fichiers.map(f => '📎 **' + f.name + '**').join('\n');
   let uMsg = text;
-  if (hasFile) uMsg = (text ? text + '\n\n' : '') + `📎 **${S.pendingFile.name}**`;
-  addMsgUI('user', uMsg || `📎 Analyser : **${S.pendingFile.name}**`);
+  if (hasFile) uMsg = (text ? text + '\n\n' : '') + listeNoms;
+  addMsgUI('user', uMsg || listeNoms);
 
   // Update chat title
-  if (isFirst) document.getElementById('chat-title').textContent = (text || S.pendingFile?.name || 'Session').slice(0, 40);
+  if (isFirst) document.getElementById('chat-title').textContent = (text || (fichiers[0] && fichiers[0].name) || 'Session').slice(0, 40);
 
   input.value = ''; autoResize(input);
-  const fname = S.pendingFile?.name;
-  const pfile = S.pendingFile;
   // Conversation d'origine : la reponse y reviendra meme si le client bascule ailleurs.
   const taskSid = S.currentSessionId;
-  const estTexte = hasFile && estFichierTexte(fname);
+  // Les fichiers texte sont lus dans le navigateur ; les PDF et images passent
+  // par la voie d'analyse, facturee 5 jetons chacun.
+  const fTextes  = fichiers.filter(f => estFichierTexte(f.name));
+  const fAnalyse = fichiers.filter(f => !estFichierTexte(f.name));
   if (hasFile) removeFile();
 
-  // Un fichier texte joint est lu ici et ajoute a la demande. Le message affiche
-  // et enregistre dans l'historique reste court (le nom du fichier) : seul
-  // l'agent recoit le contenu, sinon la conversation devient illisible.
-  let messagePourAgent = text;
-  if (estTexte && pfile) {
-    const lu = await lireFichierTexte(pfile);
+  // 1) Contenu des fichiers texte. Le message affiche et enregistre reste court
+  //    (les noms seuls) : le contenu ne part qu'a l'agent, sinon la
+  //    conversation devient illisible.
+  let blocTextes = '';
+  for (const f of fTextes) {
+    const lu = await lireFichierTexte(f);
     if (lu.erreur) { deliverToSession(taskSid, lu.erreur); return; }
-    messagePourAgent = (text || 'Voici un fichier. Explique-moi ce qu il contient.')
-      + '\n\n--- Contenu de ' + fname + ' ---\n' + lu.texte
+    blocTextes += '\n\n--- Contenu de ' + f.name + ' ---\n' + lu.texte
       + (lu.tronque ? '\n--- (tronque : seuls les ' + LIMITE_TEXTE + ' premiers caracteres fournis) ---' : '');
   }
 
-  // Le mode Vision n'emprunte la voie d'analyse QUE si un fichier est joint.
-  // Sans fichier, la demande suit le chemin normal : l'agent decide et agit
-  // (navigation web, redaction d'un document Google...).
-  if (isVision && hasFile && !estTexte) {
-    // Meme experience que le chat : la bulle d'attente reste DANS le fil et
-    // l'agent y fait defiler ses etapes. L'ancien voile modal bloquait l'ecran
-    // et jetait les etapes au passage : updateSteps ecrit dans #typing-msg,
-    // qui n'existait pas sur cette branche puisque showTyping n'etait pas appele.
-    showTyping();
-    let out;
-    try {
-      out = await analyzeFileWithAgent(pfile, text, taskSid);
-    } catch (e) {
-      out = null;
-    }
-    removeTyping();
-    if (out && out.stopped) return; // arret client : message deja affiche
-    if (out && out.extraction) {
-      if (S.currentSessionId === taskSid) showResultCard(fname, (fname.split('.').pop() || '').toLowerCase(), out.extraction);
-      deliverToSession(taskSid, out.extraction);
-    } else {
-      deliverToSession(taskSid, (out && out.error) || "Je n'ai pas réussi à analyser ce fichier. Réessayez dans un instant, ou envoyez-le dans un autre format.");
-    }
-    setTimeout(refreshSupaTokens, 800);
+  // 2) Lecture des PDF et images. Sans le mode Vision on ne les perd pas en
+  //    silence : on le dit au client.
+  let blocLectures = '';
+  if (fAnalyse.length && !isVision) {
+    deliverToSession(taskSid, "L'analyse de PDF et d'images demande le mode **Vision Avancée**. Activez-le au-dessus de la zone de saisie, puis renvoyez vos fichiers.");
     return;
   }
+  if (fAnalyse.length) {
+    // La bulle d'attente reste dans le fil et l'agent y fait defiler ses etapes.
+    showTyping();
+    const lectures = [];
+    let arrete = false;
+    for (const f of fAnalyse) {
+      let out = null;
+      try { out = await analyzeFileWithAgent(f, text, taskSid); } catch (e) { out = null; }
+      if (out && out.stopped) { arrete = true; break; }
+      lectures.push({ nom: f.name, texte: (out && out.extraction) || null, erreur: (out && out.error) || null });
+    }
+    removeTyping();
+    if (arrete) return; // arret client : message deja affiche
+
+    // UN seul fichier et rien d'autre a croiser : la reponse redigee par
+    // l'agent dans le workflow d'analyse EST la reponse. On la rend telle
+    // quelle, sans payer un appel de plus.
+    if (fAnalyse.length === 1 && !fTextes.length) {
+      const l = lectures[0];
+      if (l && l.texte) {
+        if (S.currentSessionId === taskSid) showResultCard(l.nom, (l.nom.split('.').pop() || '').toLowerCase(), l.texte);
+        deliverToSession(taskSid, l.texte);
+      } else {
+        deliverToSession(taskSid, (l && l.erreur) || "Je n'ai pas réussi à analyser ce fichier. Réessayez dans un instant, ou envoyez-le dans un autre format.");
+      }
+      setTimeout(refreshSupaTokens, 800);
+      return;
+    }
+
+    const reussies = lectures.filter(l => l.texte);
+    if (!reussies.length) {
+      deliverToSession(taskSid, (lectures[0] && lectures[0].erreur) || "Je n'ai réussi à lire aucun de ces fichiers.");
+      setTimeout(refreshSupaTokens, 800);
+      return;
+    }
+    const ratees = lectures.filter(l => !l.texte).map(l => l.nom);
+    blocLectures = reussies.map(l => '\n\n--- Lecture de ' + l.nom + ' ---\n' + l.texte).join('')
+      + (ratees.length ? '\n\n(Ces fichiers n ont pas pu etre lus : ' + ratees.join(', ') + '. Signale-le au client.)' : '');
+    setTimeout(refreshSupaTokens, 800);
+  }
+
+  // 3) Message pour l'agent : la demande du client, puis tout ce qui a ete lu.
+  //    Plusieurs fichiers donnent UNE reponse, pas cinq comptes rendus empiles.
+  let messagePourAgent = text;
+  if (blocTextes || blocLectures) {
+    const nb = fTextes.length + fAnalyse.length;
+    messagePourAgent = (text || (nb > 1 ? 'Explique-moi ce que contiennent ces fichiers.' : 'Explique-moi ce que contient ce fichier.'))
+      + (nb > 1 ? '\n\nJ ai lu les ' + nb + ' fichiers ci-dessous. Reponds en UNE seule fois, en les croisant, sans les traiter un par un.' : '')
+      + blocTextes + blocLectures;
+  }
+
 
   // Standard mode — try n8n webhook first, fallback local
   showTyping();
@@ -2245,19 +2277,97 @@ function onPhotoPrise(e) {
 }
 function onDragOver(e) { e.preventDefault(); document.getElementById('upload-zone').classList.add('drag-over'); }
 function onDragLeave() { document.getElementById('upload-zone').classList.remove('drag-over'); }
-function onDrop(e) { e.preventDefault(); document.getElementById('upload-zone').classList.remove('drag-over'); const f=e.dataTransfer.files[0]; if(f)showFile(f); }
-function onFileSelect(e) { const f=e.target.files[0]; if(f)showFile(f); }
-function showFile(file) {
-  S.pendingFile=file; S.hasFile=true;
-  const ext=file.name.split('.').pop().toLowerCase();
-  document.getElementById('upi-icon').textContent=FICONS[ext]||'📎';
-  document.getElementById('upi-name').textContent=file.name;
-  document.getElementById('upi-size').textContent=(file.size/1024).toFixed(1)+' Ko · Prêt';
-  document.getElementById('upload-preview').classList.add('show');
+// Plusieurs fichiers par message : le client peut en deposer jusqu'a
+// MAX_FICHIERS d'un coup. S.pendingFiles remplace l'ancien S.pendingFile unique.
+const MAX_FICHIERS = 5;
+
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag-over');
+  ajouterFichiers(e.dataTransfer.files);
+}
+function onFileSelect(e) { ajouterFichiers(e.target.files); }
+
+function ajouterFichiers(liste) {
+  const arr = Array.from(liste || []);
+  if (!arr.length) return 0;
+  const avant = S.pendingFiles.length;
+  let ajoutes = 0;
+  for (const f of arr) { if (ajouterFichier(f, true)) ajoutes++; }
+  rendreFichiers();
+  if (ajoutes < arr.length && S.pendingFiles.length >= MAX_FICHIERS && avant + arr.length > MAX_FICHIERS) {
+    showToast('5 fichiers au maximum par message', 2600);
+  }
+  return ajoutes;
+}
+
+function ajouterFichier(file, differerRendu) {
+  if (!file) return false;
+  if (S.pendingFiles.length >= MAX_FICHIERS) return false;
+  // Le meme fichier depose deux fois ne compte qu'une fois.
+  if (S.pendingFiles.some(f => f.name === file.name && f.size === file.size)) return false;
+  S.pendingFiles.push(file);
+  if (!differerRendu) rendreFichiers();
+  return true;
+}
+
+// Compatibilite : la photo et le collage ajoutent encore un fichier unique.
+function showFile(file) { return ajouterFichier(file); }
+
+function rendreFichiers() {
+  const box = document.getElementById('upload-preview');
+  const n = S.pendingFiles.length;
+  S.hasFile = n > 0;
+  box.innerHTML = '';
+  if (!n) {
+    box.classList.remove('show');
+    document.getElementById('file-input').value = '';
+    setMode('standard');
+    return;
+  }
+  S.pendingFiles.forEach((f, i) => {
+    const ext = (f.name.split('.').pop() || '').toLowerCase();
+    const row = document.createElement('div');
+    row.className = 'upload-file-row';
+    const ic = document.createElement('span');
+    ic.style.fontSize = '22px';
+    ic.textContent = FICONS[ext] || '📎';
+    const mid = document.createElement('div');
+    mid.style.cssText = 'flex:1;min-width:0';
+    const nm = document.createElement('div');
+    nm.className = 'upload-preview-name';
+    nm.textContent = f.name;
+    const sz = document.createElement('div');
+    sz.className = 'upload-preview-size';
+    sz.textContent = (f.size / 1024).toFixed(1) + ' Ko · Prêt';
+    mid.appendChild(nm); mid.appendChild(sz);
+    const rm = document.createElement('button');
+    rm.className = 'upload-preview-remove';
+    rm.type = 'button';
+    rm.textContent = '✕';
+    rm.title = 'Retirer ce fichier';
+    rm.onclick = () => retirerFichier(i);
+    row.appendChild(ic); row.appendChild(mid); row.appendChild(rm);
+    box.appendChild(row);
+  });
+  if (n > 1) {
+    const tot = document.createElement('div');
+    tot.className = 'upload-preview-size';
+    tot.style.cssText = 'width:100%;text-align:right';
+    tot.textContent = n + ' fichiers joints' + (n < MAX_FICHIERS ? ' · ' + (MAX_FICHIERS - n) + ' de plus possible' : ' · maximum atteint');
+    box.appendChild(tot);
+  }
+  box.classList.add('show');
   document.getElementById('upload-zone').classList.remove('show');
-  S.mode='vision';
-  document.getElementById('mode-standard').classList.remove('active');
-  document.getElementById('mode-vision').classList.add('active');
+  setMode('vision');
+}
+
+function retirerFichier(i) {
+  S.pendingFiles.splice(i, 1);
+  // Le champ garde sa selection precedente : on le vide, sinon redeposer le
+  // meme fichier ne declenche aucun evenement change.
+  document.getElementById('file-input').value = '';
+  rendreFichiers();
 }
 // Coller une image (Ctrl+V / capture d'ecran) directement dans la zone d'ecriture.
 function onPasteFile(e) {
@@ -2285,13 +2395,9 @@ function onPasteFile(e) {
 }
 
 function removeFile() {
-  S.pendingFile=null; S.hasFile=false;
-  document.getElementById('upload-preview').classList.remove('show');
+  S.pendingFiles = [];
+  rendreFichiers();
   document.getElementById('upload-zone').classList.remove('show');
-  document.getElementById('file-input').value='';
-  S.mode='standard';
-  document.getElementById('mode-standard').classList.add('active');
-  document.getElementById('mode-vision').classList.remove('active');
 }
 
 /* ═══ LOADING ════════════════════════════════════════════════════════ */
