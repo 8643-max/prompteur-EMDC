@@ -650,7 +650,7 @@ body.resultats-masques .btn-show-right{display:flex}
           <!-- Bouton fichier : input transparent superposé, fiable sur iOS Safari -->
           <div style="position:relative;width:38px;height:38px;flex-shrink:0">
             <div class="btn-icon" style="position:absolute;inset:0;pointer-events:none">📎</div>
-            <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.docx,.doc,.pptx,.ppt,.xlsx,.xls" onchange="onFileSelect(event)" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0" title="Joindre un fichier"/>
+            <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.markdown,.csv,.tsv,.log,.json,.xml,.yml,.yaml,.ini,.conf,.cfg,.env,.example,.toml,.js,.mjs,.cjs,.ts,.tsx,.jsx,.py,.rb,.php,.java,.c,.h,.cpp,.hpp,.cs,.go,.rs,.swift,.kt,.r,.lua,.sql,.sh,.bash,.zsh,.bat,.cmd,.ps1,.html,.htm,.css,.scss,.less,.vue,.svelte" onchange="onFileSelect(event)" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0" title="Joindre un fichier"/>
           </div>
           <!-- Photo : capture="environment" ouvre directement l appareil photo sur
                telephone. Sur ordinateur, cela retombe sur le selecteur de fichiers.
@@ -1464,7 +1464,10 @@ function addMsgUI(role, text, save = true) {
     av.style.cssText='background:var(--bg-elevated);border:1px solid var(--border-strong);overflow:hidden;border-radius:50%';
   } else { av.textContent = S.user?.name?.charAt(0).toUpperCase() || 'U'; }
   const bubble = document.createElement('div'); bubble.className = 'msg-bubble';
-  bubble.innerHTML = markdownLite(text);
+  // Meme traitement que le panneau Resultats : on echappe d'abord le HTML -- le
+  // texte vient de documents clients et de pages web -- puis on rend les liens
+  // cliquables. Sans escapeHtml, un document piege pouvait injecter du HTML.
+  bubble.innerHTML = lienCliquable(markdownLite(escapeHtml(text)));
   div.appendChild(av); div.appendChild(bubble); wrap.appendChild(div);
   // Bouton d ecoute sur chaque reponse : il lance ET arrete la lecture.
   let btnLire = null;
@@ -1597,10 +1600,12 @@ function updateSteps(sessionId, etapes) {
   if (wrap) wrap.scrollTop = wrap.scrollHeight;
 }
 
-// Interroge le suivi toutes les 2 secondes jusqu'au resultat.
+// Sondage de secours : interroge n8n toutes les 2 secondes jusqu'au resultat.
+// N'est utilise que si le suivi par Supabase est indisponible (invite non
+// connecte, ou politique RLS de lecture absente). Voir suivreJob plus bas.
 // brut = true : renvoie { statut, resultat, erreur } au lieu d'un texte, pour
 // que l'appelant distingue une vraie reponse d'un echec (analyse de fichier).
-async function suivreJob(jobId, userId, taskSid, ctrl, brut) {
+async function suivreJobN8n(jobId, userId, taskSid, ctrl, brut) {
   const debut = Date.now(), LIMITE = 15 * 60 * 1000;
   let vues = 0;
   const stop = () => { const e = new Error('stop'); e.name = 'AbortError'; return e; };
@@ -1636,6 +1641,128 @@ async function suivreJob(jobId, userId, taskSid, ctrl, brut) {
   }
   const tropLong = "Votre demande tourne depuis longtemps et je n'ai toujours pas de résultat. Réessayez, ou découpez-la en deux étapes.";
   return brut ? { statut: 'erreur', erreur: tropLong } : tropLong;
+}
+
+/* ── Suivi du travail par Supabase Realtime ────────────────────────
+   Le statut d'un job vit deja dans la table `jobs` de Supabase : le navigateur
+   n'a aucune raison de passer par n8n pour le lire. L'ancien sondage appelait
+   `saas/async/status` toutes les 2 secondes, ce qui consommait 62 % du quota
+   d'executions n8n (156 executions sur 250 mesurees le 21/08/2026, pour
+   seulement 12 vraies demandes clients).
+
+   Ici le navigateur s'abonne a SA ligne et recoit les etapes des qu'elles sont
+   ecrites : zero execution n8n, et l'affichage devient instantane au lieu
+   d'avoir jusqu'a 2 secondes de retard.
+
+   Repli automatique : si la lecture directe est refusee (politique RLS absente,
+   invite non connecte, Supabase injoignable), on repasse tout seul sur l'ancien
+   sondage n8n. Ce fichier est donc sur a deployer AVANT d'executer le SQL.
+
+   Retour arriere complet : passer SUIVI_REALTIME_ACTIF a false. */
+const SUIVI_REALTIME_ACTIF = true;
+const SUIVI_INDISPONIBLE = Symbol('suivi-indisponible');
+let _realtimeIndisponible = false;
+
+async function suivreJobSupabase(jobId, userId, taskSid, ctrl, brut) {
+  const LIMITE = 15 * 60 * 1000;
+  const stop = () => { const e = new Error('stop'); e.name = 'AbortError'; return e; };
+  let vues = 0;
+
+  const lire = async () => {
+    try {
+      const { data, error } = await _supa
+        .from('jobs')
+        .select('id,statut,etapes,resultat,erreur')
+        .eq('id', jobId)
+        .maybeSingle();
+      if (error) return null;
+      return data;
+    } catch (_) { return null; }
+  };
+
+  // Sonde d'entree : sans droit de lecture, RLS renvoie zero ligne sans erreur.
+  // On retente une fois avant de conclure, le temps que la ligne soit visible.
+  let ligne = await lire();
+  if (!ligne) { await new Promise(s => setTimeout(s, 1000)); ligne = await lire(); }
+  if (!ligne) return SUIVI_INDISPONIBLE;
+
+  return await new Promise((resolve, reject) => {
+    let fini = false, canal = null, minuteur = null, filet = null;
+
+    const surAbandon = () => rejeter(stop());
+    const nettoyer = () => {
+      if (fini) return; fini = true;
+      if (minuteur) clearTimeout(minuteur);
+      if (filet) clearInterval(filet);
+      if (canal) { try { _supa.removeChannel(canal); } catch (_) {} }
+      if (ctrl) { try { ctrl.signal.removeEventListener('abort', surAbandon); } catch (_) {} }
+    };
+    const rendre  = v => { nettoyer(); resolve(v); };
+    const rejeter = e => { nettoyer(); reject(e); };
+
+    // Meme contrat de sortie que le sondage n8n, a la lettre.
+    const traiter = (j) => {
+      if (!j || fini) return;
+      if (Array.isArray(j.etapes) && j.etapes.length) {
+        _etapesParSession.set(taskSid, j.etapes);
+        if (j.etapes.length > vues) { vues = j.etapes.length; updateSteps(taskSid, j.etapes); }
+      }
+      if (j.statut === 'termine') {
+        return rendre(brut ? { statut: 'termine', resultat: j.resultat || null } : (j.resultat || null));
+      }
+      if (j.statut === 'annule') return rejeter(stop());
+      if (j.statut === 'erreur') {
+        const msg = j.resultat
+          || ("Je n'ai pas pu terminer votre demande.\n\n**Ce qui a bloqué :** " + (j.erreur || 'erreur inconnue')
+            + "\n\nReformulez votre demande, ou découpez-la en deux étapes et je repars dessus.");
+        return rendre(brut ? { statut: 'erreur', erreur: msg } : msg);
+      }
+    };
+
+    if (ctrl) {
+      if (ctrl.signal.aborted) return rejeter(stop());
+      ctrl.signal.addEventListener('abort', surAbandon);
+    }
+
+    minuteur = setTimeout(() => {
+      const tropLong = "Votre demande tourne depuis longtemps et je n'ai toujours pas de résultat. Réessayez, ou découpez-la en deux étapes.";
+      rendre(brut ? { statut: 'erreur', erreur: tropLong } : tropLong);
+    }, LIMITE);
+
+    canal = _supa.channel('job-' + jobId)
+      .on('postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'jobs', filter: 'id=eq.' + jobId },
+          p => traiter(p.new))
+      .subscribe();
+
+    // Filet de securite : si un evenement se perd (websocket coupe, reseau
+    // mobile), on relit la ligne toutes les 10 s. Cela reste 5 fois moins de
+    // requetes que l'ancien sondage, et toujours zero execution n8n.
+    filet = setInterval(async () => { traiter(await lire()); }, 10000);
+
+    // La tache a pu se terminer entre la sonde d'entree et l'abonnement.
+    traiter(ligne);
+    lire().then(traiter);
+  });
+}
+
+// Aiguillage : Supabase Realtime quand c'est possible, sondage n8n sinon.
+// Le repli est memorise pour la duree de la session : inutile de repayer la
+// sonde d'entree a chaque message si la lecture directe n'est pas ouverte.
+async function suivreJob(jobId, userId, taskSid, ctrl, brut) {
+  if (SUIVI_REALTIME_ACTIF && _supa && S.user?.email && !_realtimeIndisponible) {
+    try {
+      const r = await suivreJobSupabase(jobId, userId, taskSid, ctrl, brut);
+      if (r !== SUIVI_INDISPONIBLE) return r;
+      _realtimeIndisponible = true;
+      console.warn('Suivi Supabase indisponible (politique RLS ?) : repli sur le sondage n8n.');
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      _realtimeIndisponible = true;
+      console.warn('Suivi Supabase en echec : repli sur le sondage n8n.', e);
+    }
+  }
+  return suivreJobN8n(jobId, userId, taskSid, ctrl, brut);
 }
 
 function showResultCard(filename, ext, extraction) {
@@ -1683,13 +1810,27 @@ function ajouterBoutonAnnuler() {
 // Une capture d'ecran s'affiche en vignette plutot qu'en longue adresse :
 // le client voit ce que l'agent a vu.
 function lienCliquable(html) {
-  return String(html || '').replace(/(https?:\/\/[^\s<]+)/g, u => {
+  // Les liens deja fabriques sont mis de cote pendant le traitement : sans ca,
+  // la detection des URLs nues retrouverait l'adresse a l'interieur du href et
+  // imbriquerait un second <a> dedans.
+  const jetons = [];
+  const garder = h => { jetons.push(h); return '\u0000' + (jetons.length - 1) + '\u0000'; };
+  let out = String(html || '');
+
+  // 1) Liens markdown [libelle](url) : le libelle reste lisible, l'URL passe en href.
+  out = out.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, libelle, u) =>
+    garder('<a href="' + u + '" target="_blank" rel="noopener" style="color:var(--gold)">' + libelle + '</a>'));
+
+  // 2) URLs nues restantes.
+  out = out.replace(/(https?:\/\/[^\s<]+)/g, u => {
     if (/\.(jpe?g|png|webp|gif)(\?|$)/i.test(u)) {
-      return '<a href="' + u + '" target="_blank" rel="noopener">'
-        + '<img src="' + u + '" alt="capture d\'écran" class="capture-vignette" loading="lazy"></a>';
+      return garder('<a href="' + u + '" target="_blank" rel="noopener">'
+        + '<img src="' + u + '" alt="capture" class="capture-vignette" loading="lazy"></a>');
     }
-    return '<a href="' + u + '" target="_blank" rel="noopener" style="color:var(--gold);word-break:break-all">' + u + '</a>';
+    return garder('<a href="' + u + '" target="_blank" rel="noopener" style="color:var(--gold);word-break:break-all">' + u + '</a>');
   });
+
+  return out.replace(/\u0000(\d+)\u0000/g, (m, i) => jetons[i]);
 }
 
 // Panneau Resultats pour tout travail de l'agent : navigation web, document
@@ -1744,6 +1885,35 @@ function stopAgent() {
   addMsgUI('assistant', "⏹ **Tâche interrompue à votre demande.**\n\nJe me suis arrêté là où j'en étais. Rien de plus n'a été effectué.\n\nVous pouvez maintenant me donner de nouvelles consignes, me demander de reprendre autrement, ou d'annuler ce qui a déjà été fait.");
 }
 
+// Fichiers texte : code, configuration, notes, donnees. Ils ne passent PAS par
+// la voie d'analyse Vision, qui ne sait traiter que des images et des PDF. Leur
+// contenu est lu ici, dans le navigateur, et joint a la demande : l'agent le
+// recoit comme du contexte de conversation. C'est plus juste (pas de modele de
+// vision sur du texte), plus rapide, et ca ne coute qu'un message de chat.
+const LIMITE_TEXTE = 60000;
+const EXT_TEXTE = ['txt','md','markdown','rst','json','csv','tsv','log','xml','yml','yaml','ini','conf','cfg','env','example','properties','toml',
+  'js','mjs','cjs','ts','tsx','jsx','py','rb','php','java','c','h','cpp','hpp','cs','go','rs','swift','kt','scala','r','lua','pl',
+  'sh','bash','zsh','bat','cmd','ps1','sql','html','htm','css','scss','sass','less','vue','svelte','gitignore','dockerfile','makefile'];
+function estFichierTexte(nom) {
+  const e = String(nom || '').split('.').pop().toLowerCase();
+  return EXT_TEXTE.includes(e);
+}
+function lireFichierTexte(file) {
+  return new Promise(resolve => {
+    if (file.size > 2 * 1024 * 1024) {
+      resolve({ erreur: "Ce fichier texte est trop volumineux (2 Mo maximum). Envoyez-m'en un extrait." });
+      return;
+    }
+    const fr = new FileReader();
+    fr.onload = () => {
+      const t = String(fr.result || '');
+      resolve({ texte: t.slice(0, LIMITE_TEXTE), tronque: t.length > LIMITE_TEXTE });
+    };
+    fr.onerror = () => resolve({ erreur: "Je n'ai pas réussi à lire ce fichier." });
+    fr.readAsText(file);
+  });
+}
+
 // Envoie le fichier a l'agent pour une VRAIE analyse. Rien n'est stocke : le
 // fichier part en direct, il n'est ecrit nulle part.
 async function analyzeFileWithAgent(file, question, sessionId) {
@@ -1752,7 +1922,7 @@ async function analyzeFileWithAgent(file, question, sessionId) {
   if (file.size > MAX) return { error: "Fichier trop volumineux (8 Mo maximum)." };
   const ext = (file.name.split('.').pop() || '').toLowerCase();
   const fileType = ext === 'pdf' ? 'pdf' : (['png','jpg','jpeg','webp','gif'].includes(ext) ? 'image' : null);
-  if (!fileType) return { error: "Format non pris en charge pour l'analyse : envoyez une image (PNG, JPG) ou un PDF." };
+  if (!fileType) return { error: "Format non pris en charge : envoyez une image (PNG, JPG), un PDF, ou un fichier texte (code, .json, .md, .csv, .log...)." };
 
   const b64 = await new Promise((resolve, reject) => {
     const fr = new FileReader();
@@ -1925,20 +2095,37 @@ async function sendMessage() {
   const pfile = S.pendingFile;
   // Conversation d'origine : la reponse y reviendra meme si le client bascule ailleurs.
   const taskSid = S.currentSessionId;
+  const estTexte = hasFile && estFichierTexte(fname);
   if (hasFile) removeFile();
+
+  // Un fichier texte joint est lu ici et ajoute a la demande. Le message affiche
+  // et enregistre dans l'historique reste court (le nom du fichier) : seul
+  // l'agent recoit le contenu, sinon la conversation devient illisible.
+  let messagePourAgent = text;
+  if (estTexte && pfile) {
+    const lu = await lireFichierTexte(pfile);
+    if (lu.erreur) { deliverToSession(taskSid, lu.erreur); return; }
+    messagePourAgent = (text || 'Voici un fichier. Explique-moi ce qu il contient.')
+      + '\n\n--- Contenu de ' + fname + ' ---\n' + lu.texte
+      + (lu.tronque ? '\n--- (tronque : seuls les ' + LIMITE_TEXTE + ' premiers caracteres fournis) ---' : '');
+  }
 
   // Le mode Vision n'emprunte la voie d'analyse QUE si un fichier est joint.
   // Sans fichier, la demande suit le chemin normal : l'agent decide et agit
   // (navigation web, redaction d'un document Google...).
-  if (isVision && hasFile) {
-    showLoadingOverlay();
+  if (isVision && hasFile && !estTexte) {
+    // Meme experience que le chat : la bulle d'attente reste DANS le fil et
+    // l'agent y fait defiler ses etapes. L'ancien voile modal bloquait l'ecran
+    // et jetait les etapes au passage : updateSteps ecrit dans #typing-msg,
+    // qui n'existait pas sur cette branche puisque showTyping n'etait pas appele.
+    showTyping();
     let out;
     try {
       out = await analyzeFileWithAgent(pfile, text, taskSid);
     } catch (e) {
       out = null;
     }
-    hideLoadingOverlay();
+    removeTyping();
     if (out && out.stopped) return; // arret client : message deja affiche
     if (out && out.extraction) {
       if (S.currentSessionId === taskSid) showResultCard(fname, (fname.split('.').pop() || '').toLowerCase(), out.extraction);
@@ -1973,7 +2160,7 @@ async function sendMessage() {
         headers: whHeaders,
         body: JSON.stringify({
           action: 'chat',
-          message: text,
+          message: messagePourAgent,
           user: S.user?.name || 'Invité',
           email: S.user?.email || '',
           user_id: uid,
