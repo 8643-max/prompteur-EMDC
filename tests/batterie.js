@@ -273,6 +273,37 @@ async function main() {
       verifier(!trouve, `preambule interdit detecte : « ${trouve} »`);
     });
 
+    await test('Aiguillage : une tache documentaire va bien a l agent specialise', async () => {
+      const sidDoc = 'batterie-doc-' + Date.now();
+      const r = await lancerDemande(
+        'Regarde dans mon Drive s il existe un dossier appele Factures, et dis-moi ce que tu trouves.',
+        sidDoc);
+      verifier(r.statut === 202, `HTTP ${r.statut} au lieu de 202`);
+      await attendreJob(r.corps.job_id, EMAIL);
+
+      // On remonte les executions du Worker jusqu a celle qui a fait le travail :
+      // la derniere est la boucle de fin, qui ne contient aucun agent.
+      const l = await jsonN8n(`/api/v1/executions?workflowId=${WF.worker}&limit=6`);
+      let trouve = null;
+      for (const e of l.data) {
+        const ex = await jsonN8n(`/api/v1/executions/${e.id}?includeData=true`);
+        const rd = ((ex.data || {}).resultData || {}).runData || {};
+        if (!rd['Quel specialiste ?']) continue;
+        const cc = sortieDuNoeud(ex, 'Composer la consigne');
+        const spec = cc && cc[0] && cc[0].json && cc[0].json.target_worker;
+        if (spec !== 'documents') continue;
+        trouve = { rd, ex };
+        break;
+      }
+      verifier(trouve, 'aucune execution aiguillee vers documents n a ete retrouvee');
+      verifier(trouve.rd['Agent Documents'],
+        'la tache etait documentaire mais c est l agent general qui a travaille');
+      verifier(!trouve.rd['Assistant IA'],
+        'les deux agents ont tourne sur la meme tache');
+      const err = erreursReelles(trouve.ex);
+      verifier(err.length === 0, 'erreurs dans le Worker : ' + err.join(' | '));
+    });
+
     await test('Isolation : une session ne lit pas le job d une autre', async () => {
       const r = await fetch(N8N + '/webhook/saas/async/status', {
         method: 'POST',
