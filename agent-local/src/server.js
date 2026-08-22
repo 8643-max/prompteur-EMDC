@@ -197,6 +197,35 @@ async function handleRequest(cfg, req, res) {
       return sendJson(res, 200, { success: true, filename, content, size: Buffer.byteLength(content) });
     }
 
+    // Edition chirurgicale : remplace un fragment cible au lieu de renvoyer le
+    // fichier entier. Indispensable pour les gros fichiers (CDC Worker 7) --
+    // reutilise le meme historique/corbeille que /files pour rester annulable.
+    if (url.pathname.startsWith('/files/') && req.method === 'PATCH') {
+      const filename = decodeURIComponent(url.pathname.slice('/files/'.length));
+      const dest = safeStoragePath(filename);
+      if (!fs.existsSync(dest)) {
+        return sendJson(res, 404, { success: false, error: 'fichier introuvable' });
+      }
+      const { search, replace, regex, flags } = JSON.parse(rawBody || '{}');
+      if (typeof search !== 'string' || typeof replace !== 'string') {
+        return sendJson(res, 400, { success: false, error: 'search et replace sont requis' });
+      }
+      const avant = fs.readFileSync(dest, 'utf8');
+      const occurrences = regex
+        ? (avant.match(new RegExp(search, (flags || '').replace('g', '') + 'g')) || []).length
+        : avant.split(search).length - 1;
+      if (occurrences === 0) {
+        return sendJson(res, 409, { success: false, error: 'aucune occurrence trouvee, rien a modifier' });
+      }
+      const apres = regex
+        ? avant.replace(new RegExp(search, flags || 'g'), replace)
+        : avant.split(search).join(replace);
+      archiverVersion(dest, path.basename(dest));
+      fs.writeFileSync(dest, apres, 'utf8');
+      console.log(`[OK] Document modifie chirurgicalement : ${filename} (${occurrences} occurrence(s))`);
+      return sendJson(res, 200, { success: true, filename, size: Buffer.byteLength(apres), occurrences });
+    }
+
     if (url.pathname.startsWith('/files/') && req.method === 'DELETE') {
       const filename = decodeURIComponent(url.pathname.slice('/files/'.length));
       const dest = safeStoragePath(filename);
