@@ -204,18 +204,18 @@ async function handleRequest(cfg, req, res) {
       const filename = decodeURIComponent(url.pathname.slice('/files/'.length));
       const dest = safeStoragePath(filename);
       if (!fs.existsSync(dest)) {
-        return sendJson(res, 404, { success: false, error: 'fichier introuvable' });
+        return sendJson(res, 404, { success: false, error: 'fichier introuvable', filename });
       }
       const { search, replace, regex, flags } = JSON.parse(rawBody || '{}');
       if (typeof search !== 'string' || typeof replace !== 'string') {
-        return sendJson(res, 400, { success: false, error: 'search et replace sont requis' });
+        return sendJson(res, 400, { success: false, error: 'search et replace sont requis', filename });
       }
       const avant = fs.readFileSync(dest, 'utf8');
       const occurrences = regex
         ? (avant.match(new RegExp(search, (flags || '').replace('g', '') + 'g')) || []).length
         : avant.split(search).length - 1;
       if (occurrences === 0) {
-        return sendJson(res, 409, { success: false, error: 'aucune occurrence trouvee, rien a modifier' });
+        return sendJson(res, 409, { success: false, error: 'aucune occurrence trouvee, rien a modifier', filename });
       }
       const apres = regex
         ? avant.replace(new RegExp(search, flags || 'g'), replace)
