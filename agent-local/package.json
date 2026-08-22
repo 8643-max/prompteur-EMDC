@@ -8,6 +8,9 @@
     "install-tunnel": "node scripts/download-cloudflared.js",
     "start": "node src/server.js"
   },
+  "dependencies": {
+    "playwright-core": "^1.47.0"
+  },
   "engines": {
     "node": ">=18"
   }

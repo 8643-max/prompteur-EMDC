@@ -21,6 +21,11 @@ echo "Telechargement du tunnel securise..."
 node scripts/download-cloudflared.js
 
 echo
+echo "Installation du module de navigation (une seule fois, quelques Mo)..."
+npm install --no-audit --no-fund --omit=dev || \
+  echo "[ATTENTION] Echec -- l'agent fonctionnera quand meme pour vos documents, la navigation pilotee ne sera pas disponible tant que ce n'est pas corrige."
+
+echo
 echo "Installation terminee !"
 echo "Demarrage de l'agent..."
 echo

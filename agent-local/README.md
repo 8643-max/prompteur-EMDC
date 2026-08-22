@@ -91,3 +91,22 @@ Une fois démarré, l'agent se connecte automatiquement au cloud EMDC via un tun
 - Le tunnel (Cloudflare, gratuit, sans compte) rend l'agent joignable depuis le cloud sans exposer le PC du client sur internet ni ouvrir de port.
 - À chaque démarrage, l'agent s'auto-enregistre auprès du cloud EMDC avec sa nouvelle adresse de tunnel (l'adresse change à chaque redémarrage — c'est normal et pris en compte automatiquement).
 - Toutes les opérations sont journalisées dans la fenêtre de l'agent pour transparence.
+
+---
+
+## Navigation pilotée (Worker 7 — ajouté le 22/08/2026)
+
+En plus de vos documents, l'agent peut aussi piloter **votre vrai Chrome**, avec votre
+session déjà ouverte (contrairement à la navigation web "sans session" que l'assistant
+utilise déjà pour chercher une information en ligne) : utile pour publier sur un réseau
+social où vous êtes déjà connecté, remplir un formulaire, etc.
+
+- La première fois, une fenêtre Chrome s'ouvre — connectez-vous une fois (Facebook,
+  LinkedIn, votre CRM...), la session reste ensuite disponible pour les demandes suivantes.
+- Nécessite Google Chrome installé sur votre PC (l'agent pilote votre Chrome existant, il
+  n'en télécharge pas un second).
+- Routes : `POST /browser/start`, `POST /browser/action` (`goto`, `clic`, `saisie`, `touche`,
+  `defilement`, `capture`, `texte_page`, `etat`, `retour`), `POST /browser/stop` — même
+  signature HMAC que le reste.
+- Si l'installation du module (`npm install`) échoue chez vous, l'agent continue de
+  fonctionner normalement pour vos documents — seule la navigation pilotée est indisponible.

@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const navigateur = require('./browser');
 
 const CONFIG_PATH = path.join(__dirname, '..', 'agent.config.json');
 const STORAGE_DIR = path.join(__dirname, '..', 'storage');
@@ -235,6 +236,28 @@ async function handleRequest(cfg, req, res) {
       if (fs.existsSync(dest)) vers = corbeille(dest, path.basename(dest));
       console.log(`[OK] Document local mis en corbeille : ${filename}`);
       return sendJson(res, 200, { success: true, filename, corbeille: vers ? path.basename(vers) : null });
+    }
+
+    // Navigateur local (Worker 7, Browser Automation) : pilote le vrai Chrome
+    // du client, avec sa propre session -- distinct du mode headless cloud
+    // (Browserless) deja utilise par l'agent Web pour la navigation anonyme.
+    if (url.pathname === '/browser/start' && req.method === 'POST') {
+      const r = await navigateur.demarrer();
+      console.log(`[OK] Navigateur local ${r.deja_actif ? 'deja actif' : 'demarre'}.`);
+      return sendJson(res, 200, { success: true, ...r });
+    }
+
+    if (url.pathname === '/browser/action' && req.method === 'POST') {
+      const params = JSON.parse(rawBody || '{}');
+      const resultat = await navigateur.executerAction(params);
+      console.log(`[OK] Action navigateur : ${params.action}`);
+      return sendJson(res, 200, { success: true, action: params.action, ...resultat });
+    }
+
+    if (url.pathname === '/browser/stop' && req.method === 'POST') {
+      const r = await navigateur.arreter();
+      console.log(`[OK] Navigateur local ${r.deja_arrete ? 'deja arrete' : 'ferme'}.`);
+      return sendJson(res, 200, { success: true, ...r });
     }
 
     return sendJson(res, 404, { success: false, error: 'route inconnue' });
