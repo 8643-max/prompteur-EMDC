@@ -2680,7 +2680,7 @@ async function disconnectGoogle(name) {
 }
 
 const GOOGLE_CONNECTOR_SERVICES = ['Gmail', 'Google Drive', 'Google Calendar', 'Google Sheets'];
-const GOOGLE_OAUTH_CONNECT_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/oauth/google/connect';
+const GOOGLE_OAUTH_CONNECT_URL = 'https://n8n.emdcconsulting.com/webhook/saas/oauth/google/connect';
 
 async function connectService(name, triggerEl) {
   const btn = triggerEl || null;
@@ -3688,18 +3688,18 @@ function toggleRightPanel() {
 function closeRightPanel() { document.getElementById('right-panel').classList.remove('mobile-open'); }
 
 /* ═══ BASE DOCUMENTAIRE RAG ════════════════════════════════════════ */
-const DOCS_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/docs';
-const ASSISTANT_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/assistant';
+const DOCS_URL = 'https://n8n.emdcconsulting.com/webhook/saas/docs';
+const ASSISTANT_URL = 'https://n8n.emdcconsulting.com/webhook/saas/assistant';
 // Travail en arriere-plan : l'agent accuse reception tout de suite, puis
 // l'application suit l'avancement. Plus de coupure a 100 secondes.
-const ASYNC_CHAT_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/chat-async';
+const ASYNC_CHAT_URL = 'https://n8n.emdcconsulting.com/webhook/saas/chat-async';
 // Second moteur, en essai : la demande est d abord decoupee en sous-taches, traitees
 // une par une. Les deux repondent un job_id et se suivent avec le meme saas/async/status,
 // donc basculer de l un a l autre ne change rien au reste de l application.
-const ASYNC_FILE_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/chat-queue';
+const ASYNC_FILE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/chat-queue';
 function urlDuMoteur() { return DB.prefs().fileAttente ? ASYNC_FILE_URL : ASYNC_CHAT_URL; }
-const ASYNC_STATUS_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/async/status';
-const ASYNC_ANALYSE_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/analyse-async';
+const ASYNC_STATUS_URL = 'https://n8n.emdcconsulting.com/webhook/saas/async/status';
+const ASYNC_ANALYSE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/analyse-async';
 let _docsSelectedFile = null;
 
 function docsDragOver(e) { e.preventDefault(); document.getElementById('docs-drop-zone').classList.add('drag-over'); }
