@@ -17,7 +17,7 @@ const { execFileSync } = require('child_process');
 
 const SUPA_URL = 'https://tjyvogckvkbqoagxmflg.supabase.co';
 const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
-const REGISTER_URL = 'https://eldji8643.app.n8n.cloud/webhook/saas/docs';
+const REGISTER_URL = 'https://n8n.emdcconsulting.com/webhook/saas/docs';
 
 const ROOT = path.join(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
