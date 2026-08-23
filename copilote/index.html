@@ -2678,7 +2678,7 @@ async function disconnectGoogle(name) {
     await r.json();
   } catch (_) {}
   await refreshConnectors();
-  addMsgUI('assistant', '🔌 **Compte Google déconnecté.**\n\nVos services Google ne sont plus accessibles depuis votre copilote. Vous pouvez les reconnecter à tout moment depuis Paramètres → Connecteurs.');
+  showAppToast('🔌 **Compte Google déconnecté.**\n\nVos services Google ne sont plus accessibles depuis votre copilote.');
 }
 
 const GOOGLE_CONNECTOR_SERVICES = ['Gmail', 'Google Drive', 'Google Calendar', 'Google Sheets'];
@@ -2695,7 +2695,7 @@ async function disconnectCanva() {
     await r.json();
   } catch (_) {}
   await refreshConnectors();
-  addMsgUI('assistant', '🔌 **Compte Canva déconnecté.**\n\nVous pouvez le reconnecter à tout moment depuis Paramètres → Connecteurs.');
+  showAppToast('🔌 **Compte Canva déconnecté.**\n\nVous pouvez le reconnecter à tout moment depuis Paramètres → Connecteurs.');
 }
 
 async function connectService(name, triggerEl) {
@@ -2705,12 +2705,12 @@ async function connectService(name, triggerEl) {
   if (GOOGLE_CONNECTOR_SERVICES.includes(name)) {
     if (_connState.google && S.user?.email) { await disconnectGoogle(name); return; }
     if (!S.user?.email) {
-      addMsgUI('assistant', `⚠️ **Connexion ${name}**\n\nCréez d'abord votre compte (Paramètres → Compte) pour pouvoir connecter un service externe.`);
+      showAppToast(`⚠️ **Connexion ${name}**\n\nCréez d'abord votre compte (Paramètres → Compte) pour pouvoir connecter un service externe.`);
       return;
     }
     const url = GOOGLE_OAUTH_CONNECT_URL + '?user_id=' + encodeURIComponent(S.user.email);
     window.open(url, '_blank', 'noopener');
-    addMsgUI('assistant', '🔗 **Connexion à ' + name + ' en cours.**' + String.fromCharCode(10,10) + 'Autorisez l accès dans la fenêtre Google qui vient de s ouvrir, puis revenez ici : je vérifierai automatiquement.');
+    showAppToast('🔗 **Connexion à ' + name + ' en cours.**' + String.fromCharCode(10,10) + 'Autorisez l accès dans la fenêtre qui vient de s ouvrir, puis revenez ici.');
     setTimeout(refreshConnectors, 8000);
     setTimeout(refreshConnectors, 20000);
     return;
@@ -2719,12 +2719,12 @@ async function connectService(name, triggerEl) {
   if (name === 'Canva') {
     if (_connState.canva && S.user?.email) { await disconnectCanva(); return; }
     if (!S.user?.email) {
-      addMsgUI('assistant', `⚠️ **Connexion ${name}**\n\nCréez d'abord votre compte (Paramètres → Compte) pour pouvoir connecter un service externe.`);
+      showAppToast(`⚠️ **Connexion ${name}**\n\nCréez d'abord votre compte (Paramètres → Compte) pour pouvoir connecter un service externe.`);
       return;
     }
     const url = CANVA_OAUTH_CONNECT_URL + '?user_id=' + encodeURIComponent(S.user.email);
     window.open(url, '_blank', 'noopener');
-    addMsgUI('assistant', '🔗 **Connexion à Canva en cours.**' + String.fromCharCode(10,10) + 'Autorisez l accès dans la fenêtre Canva qui vient de s ouvrir, puis revenez ici : je vérifierai automatiquement.');
+    showAppToast('🔗 **Connexion à Canva en cours.**' + String.fromCharCode(10,10) + 'Autorisez l accès dans la fenêtre qui vient de s ouvrir, puis revenez ici.');
     setTimeout(refreshConnectors, 8000);
     setTimeout(refreshConnectors, 20000);
     return;
@@ -2733,7 +2733,7 @@ async function connectService(name, triggerEl) {
   if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
   setTimeout(() => {
     if (btn) { btn.textContent = 'Connecter'; btn.disabled = false; }
-    addMsgUI('assistant', `⚠️ **${name}**\n\nCe connecteur arrive bientôt. Contactez l'équipe EMDC Consulting si vous en avez besoin dès maintenant.`);
+    showAppToast(`⚠️ **${name}**\n\nCe connecteur arrive bientôt. Contactez l'équipe EMDC Consulting si vous en avez besoin dès maintenant.`);
   }, 400);
 }
 function sendFeedback() {
@@ -3171,7 +3171,7 @@ function clearAllHistory() {
     }
     localStorage.removeItem('emdc_sessions');
     renderHistory(); updateSessionCount(); overlay.remove();
-    addMsgUI('assistant','✅ Tout l\'historique a été supprimé.');
+    showAppToast('✅ Tout l\'historique a été supprimé.');
   };
 }
 function exportHistory(fmt) {
@@ -3312,6 +3312,24 @@ function showToast(msg, duration, callback) {
   t.style.cssText='position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:var(--bg-elevated);border:1px solid var(--green);color:var(--green);padding:10px 22px;border-radius:20px;font-size:13px;z-index:9999;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.4)';
   t.textContent = msg; document.body.appendChild(t);
   setTimeout(()=>{ t.remove(); if(callback) callback(); }, duration||2500);
+}
+/* Panneau suspendu pour les messages generiques de l'application (statuts de
+   connecteurs, actions non encore disponibles, etc.) : n'apparait jamais dans
+   la conversation, s'affiche 10s puis disparait tout seul. */
+function showAppToast(msg, duration) {
+  const html = String(msg)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/\n/g, '<br>');
+  const t = document.createElement('div');
+  t.style.cssText='position:fixed;top:24px;left:50%;transform:translateX(-50%);max-width:min(420px,90vw);background:var(--bg-elevated);border:1px solid var(--gold);color:var(--text-primary,#fff);padding:14px 20px;border-radius:14px;font-size:13px;line-height:1.5;z-index:9999;box-shadow:0 8px 30px rgba(0,0,0,.5);opacity:0;transition:opacity .25s ease';
+  t.innerHTML = html;
+  document.body.appendChild(t);
+  requestAnimationFrame(() => { t.style.opacity = '1'; });
+  setTimeout(() => {
+    t.style.opacity = '0';
+    setTimeout(() => t.remove(), 300);
+  }, duration || 10000);
 }
 // Google Identity Services — auto-remplit nom/email/photo depuis Google
 function handleGoogleCredential(response) {
@@ -3611,8 +3629,8 @@ function newSession() {
 }
 
 /* ═══ MISC ACTIONS ══════════════════════════════════════════════════ */
-function openDrive() { addMsgUI('assistant','🔗 En production, ce bouton ouvre le document directement dans **Google Drive** après connexion du workflow EMDC.'); }
-function downloadFile() { addMsgUI('assistant','⬇ Le téléchargement est disponible en production après connexion du workflow EMDC.'); }
+function openDrive() { showAppToast('🔗 En production, ce bouton ouvre le document directement dans **Google Drive** après connexion du workflow EMDC.'); }
+function downloadFile() { showAppToast('⬇ Le téléchargement est disponible en production après connexion du workflow EMDC.'); }
 /* ═══ BASCULE ENTRE COMPTES (reserve a l'administrateur EMDC) ═══════
    Aucun mot de passe n'est conserve : on deconnecte proprement puis on
    pre-remplit l'email de l'autre compte sur l'ecran de connexion.     */
