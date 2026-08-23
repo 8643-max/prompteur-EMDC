@@ -2628,18 +2628,18 @@ function filterConn(type, el) {
 /* ═══ ETAT REEL DES CONNECTEURS ═════════════════════════════════════
    L'application interrogeait jamais le serveur : un service connecte
    restait affiche comme non connecte. Elle demande maintenant.       */
-let _connState = { google: false, email: null };
+let _connState = { google: false, email: null, canva: false };
 
 async function refreshConnectors() {
-  if (!S.user?.email) { _connState = { google: false, email: null }; applyConnectorState(); return; }
+  if (!S.user?.email) { _connState = { google: false, email: null, canva: false }; applyConnectorState(); return; }
   try {
     const r = await fetch(ASSISTANT_URL, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'list_connections', user_id: S.user.email }),
     });
     const d = await r.json();
-    _connState = { google: !!d.google, email: d.email || null };
-  } catch (_) { _connState = { google: false, email: null }; }
+    _connState = { google: !!d.google, email: d.email || null, canva: !!d.canva };
+  } catch (_) { _connState = { google: false, email: null, canva: false }; }
   applyConnectorState();
 }
 
@@ -2648,8 +2648,10 @@ function applyConnectorState() {
     const nameEl = row.querySelector('.conn-row-name');
     const btn = row.querySelector('.conn-row-btn');
     if (!nameEl || !btn) return;
-    const isGoogle = GOOGLE_CONNECTOR_SERVICES.includes(nameEl.textContent.trim());
-    const on = isGoogle && _connState.google;
+    const svcName = nameEl.textContent.trim();
+    const isGoogle = GOOGLE_CONNECTOR_SERVICES.includes(svcName);
+    const isCanva = svcName === 'Canva';
+    const on = (isGoogle && _connState.google) || (isCanva && _connState.canva);
     row.dataset.status = on ? 'on' : 'off';
     btn.textContent = on ? 'Déconnecter' : 'Connecter';
     btn.style.borderColor = on ? 'var(--gold)' : '';
@@ -2681,6 +2683,20 @@ async function disconnectGoogle(name) {
 
 const GOOGLE_CONNECTOR_SERVICES = ['Gmail', 'Google Drive', 'Google Calendar', 'Google Sheets'];
 const GOOGLE_OAUTH_CONNECT_URL = 'https://n8n.emdcconsulting.com/webhook/saas/oauth/google/connect';
+const CANVA_OAUTH_CONNECT_URL = 'https://n8n.emdcconsulting.com/webhook/saas/oauth/canva/connect';
+
+async function disconnectCanva() {
+  if (!confirm('Déconnecter votre compte Canva ?\n\nVotre copilote ne pourra plus créer ni exporter de visuels sur votre compte Canva tant que vous ne l\'aurez pas reconnecté.')) return;
+  try {
+    const r = await fetch(ASSISTANT_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'disconnect_canva', user_id: S.user.email }),
+    });
+    await r.json();
+  } catch (_) {}
+  await refreshConnectors();
+  addMsgUI('assistant', '🔌 **Compte Canva déconnecté.**\n\nVous pouvez le reconnecter à tout moment depuis Paramètres → Connecteurs.');
+}
 
 async function connectService(name, triggerEl) {
   const btn = triggerEl || null;
@@ -2695,6 +2711,20 @@ async function connectService(name, triggerEl) {
     const url = GOOGLE_OAUTH_CONNECT_URL + '?user_id=' + encodeURIComponent(S.user.email);
     window.open(url, '_blank', 'noopener');
     addMsgUI('assistant', '🔗 **Connexion à ' + name + ' en cours.**' + String.fromCharCode(10,10) + 'Autorisez l accès dans la fenêtre Google qui vient de s ouvrir, puis revenez ici : je vérifierai automatiquement.');
+    setTimeout(refreshConnectors, 8000);
+    setTimeout(refreshConnectors, 20000);
+    return;
+  }
+
+  if (name === 'Canva') {
+    if (_connState.canva && S.user?.email) { await disconnectCanva(); return; }
+    if (!S.user?.email) {
+      addMsgUI('assistant', `⚠️ **Connexion ${name}**\n\nCréez d'abord votre compte (Paramètres → Compte) pour pouvoir connecter un service externe.`);
+      return;
+    }
+    const url = CANVA_OAUTH_CONNECT_URL + '?user_id=' + encodeURIComponent(S.user.email);
+    window.open(url, '_blank', 'noopener');
+    addMsgUI('assistant', '🔗 **Connexion à Canva en cours.**' + String.fromCharCode(10,10) + 'Autorisez l accès dans la fenêtre Canva qui vient de s ouvrir, puis revenez ici : je vérifierai automatiquement.');
     setTimeout(refreshConnectors, 8000);
     setTimeout(refreshConnectors, 20000);
     return;
