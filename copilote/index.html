@@ -2532,8 +2532,13 @@ async function analyzeFileWithAgent(file, question, sessionId) {
   const MAX = 8 * 1024 * 1024;
   if (file.size > MAX) return { error: "Fichier trop volumineux (8 Mo maximum)." };
   const ext = (file.name.split('.').pop() || '').toLowerCase();
-  const fileType = ext === 'pdf' ? 'pdf' : (['png','jpg','jpeg','webp','gif'].includes(ext) ? 'image' : null);
-  if (!fileType) return { error: "Format non pris en charge : envoyez une image (PNG, JPG), un PDF, ou un fichier texte (code, .json, .md, .csv, .log...)." };
+  // Documents bureautiques (Word, Excel, PowerPoint, LibreOffice) : lus cote serveur
+  // via conversion Google Drive (ou LibreOffice), puis analyses comme le reste.
+  const OFFICE_EXT = ['doc','docx','odt','rtf','xls','xlsx','ods','ppt','pptx','odp'];
+  const fileType = ext === 'pdf' ? 'pdf'
+    : (['png','jpg','jpeg','webp','gif'].includes(ext) ? 'image'
+    : (OFFICE_EXT.includes(ext) ? 'office' : null));
+  if (!fileType) return { error: "Format non pris en charge : envoyez une image (PNG, JPG), un PDF, un document Office ou LibreOffice (Word, Excel, PowerPoint, .odt, .ods, .odp...), ou un fichier texte (code, .json, .md, .csv, .log...)." };
 
   const b64 = await new Promise((resolve, reject) => {
     const fr = new FileReader();
@@ -2557,7 +2562,7 @@ async function analyzeFileWithAgent(file, question, sessionId) {
         session_id: sid || ('guest-' + Date.now().toString(36)),
         file_type: fileType,
         file_name: file.name,
-        mime_type: file.type || (fileType === 'pdf' ? 'application/pdf' : 'image/png'),
+        mime_type: file.type || (fileType === 'pdf' ? 'application/pdf' : (fileType === 'image' ? 'image/png' : '')),
         prompt: question || 'Analyse ce document et explique-moi ce qu\'il contient.',
         file_base64: b64,
       }),
@@ -2733,7 +2738,7 @@ async function sendMessage() {
   //    silence : on le dit au client.
   let blocLectures = '';
   if (fAnalyse.length && !isVision) {
-    deliverToSession(taskSid, "L'analyse de PDF et d'images demande le mode **Vision Avancée**. Activez-le au-dessus de la zone de saisie, puis renvoyez vos fichiers.");
+    deliverToSession(taskSid, "L'analyse de documents (Word, Excel, PowerPoint...), de PDF et d'images demande le mode **Vision Avancée**. Activez-le au-dessus de la zone de saisie, puis renvoyez vos fichiers.");
     return;
   }
   if (fAnalyse.length) {
