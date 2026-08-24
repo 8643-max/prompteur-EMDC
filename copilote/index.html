@@ -1754,6 +1754,8 @@ function selectTool(tool, icon, label) {
   }
   renderHistory();
   newSession();
+  // La retouche photo est une action payante : l'outil s'ouvre directement en mode Vision.
+  if (tool === 'retouche') setMode('vision');
   closeSidebar();
 }
 
@@ -2590,72 +2592,61 @@ async function analyzeFileWithAgent(file, question, sessionId) {
   }
 }
 
-// Retouche d'une image jointe (detourage, agrandissement HD, retouche portrait,
-// re-eclairage). La photo part telle quelle vers saas/studio-async, qui l'heberge,
-// la traite cote serveur (Replicate) et renvoie l'image resultat -- affichee inline
-// dans la conversation via le meme cycle asynchrone que l'analyse.
-const RETOUCHE_LABELS = {
-  detourage: 'Détourage (fond retiré)',
-  upscale: 'Agrandissement HD',
-  retouche: 'Retouche du portrait',
-  reeclairage: 'Ré-éclairage',
+// Retouche d'image : TOUT passe par l'agent. On heberge d'abord la photo pour en
+// obtenir une URL publique, puis la demande (avec cette URL) part dans la conversation
+// en mode Vision -- c'est l'agent qui verifie les jetons, appelle l'outil de retouche,
+// et pourra enchainer les modifications suivantes demandees par le client.
+const RETOUCHE_VERBES = {
+  detourage: 'Détoure cette image (enlève complètement l\'arrière-plan, rends le fond transparent)',
+  upscale: 'Agrandis cette image en haute définition (upscale)',
+  retouche: 'Retouche et améliore le portrait de cette image',
+  reeclairage: 'Rééclaire cette image (améliore et modifie l\'éclairage, ambiance studio)',
 };
-async function retoucherImage(file, operation) {
-  if (!file) return;
-  if (!S.user && !S._guestMode) { openLoginModal('first_message'); return; }
-  const MAX = 8 * 1024 * 1024;
-  if (file.size > MAX) { showToast('Image trop volumineuse (8 Mo maximum).', 4000); return; }
-  if (S.tokens <= 0) { showTokenModal(); return; }
-  const lbl = RETOUCHE_LABELS[operation] || 'Retouche';
 
-  // Cree la session au besoin, comme un envoi normal.
-  const isFirst = !S.currentSessionId;
-  if (isFirst && S.pendingSession) commitSession(file.name || lbl);
-  addMsgUI('user', '🎨 **' + lbl + '** — ' + file.name);
-  if (isFirst) document.getElementById('chat-title').textContent = (file.name || lbl).slice(0, 40);
-  const taskSid = S.currentSessionId;
-  removeFile();
-  showTyping();
-
+// Heberge une image et renvoie son URL publique (ou null en cas d'echec).
+async function hebergerImage(file) {
   const b64 = await new Promise((resolve) => {
     const fr = new FileReader();
     fr.onload = () => resolve(String(fr.result).split(',')[1] || '');
     fr.onerror = () => resolve('');
     fr.readAsDataURL(file);
   });
-  if (!b64) { removeTyping(); deliverToSession(taskSid, "Je n'ai pas pu lire cette image."); return; }
-
-  const uid = S.user?.id || S.user?.email || 'guest';
-  const ctrl = taskStart(taskSid, 'analyse');
+  if (!b64) return null;
   try {
-    const r = await fetch(STUDIO_ASYNC_URL, {
+    const r = await fetch(UPLOAD_IMAGE_URL, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: uid, email: S.user?.email || '',
-        session_id: taskSid || ('guest-' + Date.now().toString(36)),
-        operation, file_name: file.name, mime_type: file.type || 'image/png', image_base64: b64,
-      }),
-      signal: ctrl.signal,
+      body: JSON.stringify({ image_base64: b64, file_name: file.name, mime_type: file.type || 'image/png' }),
     });
-    if (!r.ok) { removeTyping(); deliverToSession(taskSid, "La retouche n'a pas pu démarrer. Réessayez dans un instant."); return; }
-    const data = await r.json().catch(() => null);
-    const jobId = data && data.job_id;
-    if (!jobId) { removeTyping(); deliverToSession(taskSid, "La retouche n'a pas pu démarrer. Réessayez dans un instant."); return; }
-    const t = taskOf(taskSid); if (t) { t.jobId = jobId; t.userId = uid; }
-    const sortie = await suivreJob(jobId, uid, taskSid, ctrl, true);
-    removeTyping();
-    if (!sortie) { deliverToSession(taskSid, "La retouche n'a pas abouti. Réessayez."); return; }
-    if (sortie.statut === 'erreur') { deliverToSession(taskSid, sortie.erreur || "La retouche a échoué."); return; }
-    deliverToSession(taskSid, sortie.resultat || 'Terminé.');
-    setTimeout(refreshSupaTokens, 800);
-  } catch (e) {
-    removeTyping();
-    const t = taskOf(taskSid); if (t && t.stoppedByUser) return;
-    if (e.name === 'AbortError') return;
-    deliverToSession(taskSid, "La retouche a échoué. Réessayez dans un instant.");
-  } finally {
-    taskEnd(taskSid);
-  }
+    if (!r.ok) return null;
+    const d = await r.json().catch(() => null);
+    return (d && d.url) || null;
+  } catch (e) { return null; }
+}
+
+// Envoie une demande de retouche a l'agent : la photo est hebergee, puis la demande
+// part comme un message normal (avec l'URL de l'image) en mode Vision Avancee.
+async function retoucheViaAgent(file, instruction) {
+  if (!file) return;
+  if (!S.user && !S._guestMode) { openLoginModal('first_message'); return; }
+  const MAX = 8 * 1024 * 1024;
+  if (file.size > MAX) { showToast('Image trop volumineuse (8 Mo maximum).', 4000); return; }
+  if (S.tokens < 5) { showTokenModal(5); return; }
+  const input = document.getElementById('chat-input');
+  input.value = '';
+  showToast('Envoi de la photo…', 1500);
+  const url = await hebergerImage(file);
+  if (!url) { showToast("Impossible d'héberger l'image. Réessayez.", 4000); return; }
+  removeFile();
+  setMode('vision'); // retouche = action payante -> mode Vision impose
+  // La demande part a l'agent, avec l'URL. L'image s'affiche en vignette dans la bulle.
+  input.value = (instruction || 'Retouche cette image') + ' : ' + url;
+  autoResize(input);
+  sendMessage();
+}
+
+// Boutons rapides sous l'apercu : chaque bouton preremplit l'operation voulue.
+function retoucherImage(file, operation) {
+  return retoucheViaAgent(file, RETOUCHE_VERBES[operation] || 'Retouche cette image');
 }
 
 /* ═══ AI RESPONSES (multilingues) ═══════════════════════════════════ */
@@ -2743,6 +2734,14 @@ async function sendMessage() {
   const fichiers = S.pendingFiles.slice();
   const hasFile = fichiers.length > 0;
   if (!text && !hasFile) return;
+
+  // Outil Retouche photo : une image jointe ne part pas a l'analyse mais a l'agent.
+  // On l'heberge et on transmet la demande (avec l'URL) a l'orchestrateur, qui la
+  // route vers le pole Creation ; c'est l'agent qui retouche et enchaine les modifs.
+  if (S.currentTool === 'retouche' && hasFile) {
+    const img = fichiers.find(f => /^image\//.test(f.type || '') || ['png', 'jpg', 'jpeg', 'webp'].includes((f.name.split('.').pop() || '').toLowerCase()));
+    if (img) { retoucheViaAgent(img, text || 'Détoure cette image (enlève l\'arrière-plan)'); return; }
+  }
 
   // Premier message d'un utilisateur non connecté → invite à créer son profil
   if (!S.user && !S._guestMode) {
@@ -4586,9 +4585,10 @@ const ASYNC_FILE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/chat-queue';
 function urlDuMoteur() { return DB.prefs().moteurSimple ? ASYNC_CHAT_URL : ASYNC_FILE_URL; }
 const ASYNC_STATUS_URL = 'https://n8n.emdcconsulting.com/webhook/saas/async/status';
 const ASYNC_ANALYSE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/analyse-async';
-// Retouche d'image (detourage, agrandissement, retouche portrait, re-eclairage) :
-// la photo joue le meme cycle asynchrone que l'analyse (job + suivi).
-const STUDIO_ASYNC_URL = 'https://n8n.emdcconsulting.com/webhook/saas/studio-async';
+// Retouche d'image : la photo est d'abord hebergee (URL publique), puis TOUT passe
+// par l'agent -- c'est lui qui verifie les jetons, appelle l'outil de retouche et
+// enchaine les modifications demandees ensuite dans la conversation.
+const UPLOAD_IMAGE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/upload-image';
 let _docsSelectedFile = null;
 
 function docsDragOver(e) { e.preventDefault(); document.getElementById('docs-drop-zone').classList.add('drag-over'); }
