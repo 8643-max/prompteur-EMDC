@@ -471,12 +471,15 @@ body.resultats-masques .btn-show-right{display:flex}
 .web-view-input-row button:hover{opacity:.9}
 /* Menu lateral repliable : ne garde qu'un rail d'icones pour laisser la
    place au chat, sur le modele fourni (rail minimal a gauche). */
-.btn-collapse-sidebar{background:none;border:1px solid var(--border);color:var(--text-secondary);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:13px;margin-left:6px;flex-shrink:0}
+.btn-collapse-sidebar{background:var(--bg-elevated);border:1px solid var(--border-strong);color:var(--gold-muted);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:13px;margin-left:6px;flex-shrink:0}
 .btn-collapse-sidebar:hover{color:var(--gold);border-color:var(--gold-muted)}
-.sidebar-mini{display:none;flex-direction:column;align-items:center;gap:10px;padding:12px 0;flex:1}
+.sidebar-mini{display:none;flex-direction:column;align-items:center;gap:10px;padding:12px 0;flex:1;cursor:pointer}
 .mini-btn{width:38px;height:38px;border-radius:10px;background:none;border:1px solid transparent;color:var(--text-secondary);font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .mini-btn:hover{background:var(--bg-elevated);border-color:var(--border);color:var(--gold)}
-.mini-spacer{flex:1}
+.mini-spacer{flex:1;width:100%;cursor:pointer}
+.mini-btn-expand{background:var(--gold-dim);border-color:var(--border-strong);color:var(--gold);font-weight:700}
+.mini-btn-expand:hover{color:var(--gold);background:rgba(212,175,55,.22)}
+.mini-sep{width:24px;height:1px;background:var(--border);margin:2px 0}
 .sidebar.collapsed .sidebar-scroll,.sidebar.collapsed .btn-new-session span:last-child{display:none}
 .sidebar.collapsed .btn-collapse-sidebar{transform:scaleX(-1)}
 .sidebar.collapsed .sidebar-mini{display:flex}
@@ -532,6 +535,11 @@ body.resultats-masques .btn-show-right{display:flex}
   .app-body{grid-template-columns:1fr;position:relative;overflow:hidden}
   .sidebar{position:fixed;top:0;left:-100%;height:100%;width:85vw;max-width:300px;z-index:100;box-shadow:8px 0 32px rgba(0,0,0,.6);transition:left .25s ease}
   .sidebar.mobile-open{left:0}
+  /* Le rail replie n'a pas sa place ici : le menu mobile a deja son propre
+     mecanisme (hamburger + panneau qui glisse). On l'ignore a cette largeur. */
+  .btn-collapse-sidebar,.sidebar-mini{display:none !important}
+  .sidebar.collapsed .sidebar-scroll{display:block}
+  .sidebar.collapsed .btn-new-session span:last-child{display:inline}
   #sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99}
   #sidebar-overlay.show{display:block}
   .btn-hamburger{display:flex}
@@ -705,17 +713,18 @@ body.resultats-masques .btn-show-right{display:flex}
     <!-- SIDEBAR -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-top">
-        <button class="btn-new-session" onclick="newSession()"><span>＋</span> Nouvelle session</button>
+        <button class="btn-new-session" onclick="newSession()"><span>＋</span><span>Nouvelle session</span></button>
         <button class="btn-collapse-sidebar" onclick="toggleSidebarCollapse()" title="Replier le menu">«</button>
         <button class="btn-close-sidebar" onclick="closeSidebar()">✕</button>
       </div>
       <div class="sidebar-mini" id="sidebar-mini">
+        <button class="mini-btn mini-btn-expand" onclick="toggleSidebarCollapse()" title="Déplier le menu">»</button>
         <button class="mini-btn" onclick="newSession()" title="Nouvelle session">＋</button>
+        <div class="mini-sep"></div>
         <button class="mini-btn" id="mini-general" onclick="depuisMiniAllerA('general')" title="Général &amp; Documents">💬</button>
         <button class="mini-btn" id="mini-studio" onclick="depuisMiniAllerA('studio-image')" title="Studio Média &amp; Création">🎨</button>
         <button class="mini-btn" id="mini-concepteur" onclick="depuisMiniAllerA('webdev')" title="Concepteur : Web &amp; Automatisation">⚡</button>
-        <div class="mini-spacer"></div>
-        <button class="mini-btn" onclick="toggleSidebarCollapse()" title="Déplier le menu">☰</button>
+        <div class="mini-spacer" onclick="toggleSidebarCollapse()" title="Déplier le menu"></div>
       </div>
       <div class="sidebar-scroll">
         <div class="sidebar-section">
@@ -1889,14 +1898,9 @@ const STUDIO_FORMS = {
   canva: () => `
     <div class="studio-form">
       <div class="studio-form-title">🖌️ Canva Connect</div>
-      <label>Action</label>
-      <select id="sf-canva-action" onchange="majFormulaireCanva()">
-        <option value="export">Exporter un design existant</option>
-        <option value="dataset">Vérifier les champs d'un modèle de marque (Enterprise)</option>
-        <option value="autofill">Générer depuis un modèle de marque (Enterprise)</option>
-      </select>
-      <div id="sf-canva-champs"></div>
-      <button class="studio-form-submit" onclick="lancerStudioCanva()">⚡ Lancer (Vision Avancée)</button>
+      <label>Dites-moi simplement ce qu'il vous faut</label>
+      <textarea id="sf-canva-demande" placeholder="Ex : exporte mon design « Flyer promo été » en PDF — pas besoin d'identifiant, je le retrouve moi-même dans votre compte Canva"></textarea>
+      <button class="studio-form-submit" onclick="lancerStudioCanva()">⚡ Envoyer (Vision Avancée)</button>
     </div>`,
 };
 
@@ -1907,21 +1911,8 @@ function afficherFormulaireStudio(tool) {
   const zone = document.getElementById('studio-form-zone');
   if (!zone) return;
   zone.innerHTML = STUDIO_FORMS[tool] ? STUDIO_FORMS[tool]() : '';
-  if (tool === 'canva') majFormulaireCanva();
 }
 
-function majFormulaireCanva() {
-  const action = document.getElementById('sf-canva-action')?.value;
-  const champs = document.getElementById('sf-canva-champs');
-  if (!champs) return;
-  if (action === 'export') {
-    champs.innerHTML = `<label>Identifiant du design</label><input type="text" id="sf-canva-design-id" placeholder="Fourni par Canva (ex : DAxxxxxxx)">
-      <label>Format</label><select id="sf-canva-format"><option value="pdf">PDF</option><option value="png">PNG</option><option value="jpg">JPG</option></select>`;
-  } else {
-    champs.innerHTML = `<label>Identifiant du modèle de marque</label><input type="text" id="sf-canva-template-id" placeholder="Fourni par Canva">
-      ${action === 'autofill' ? `<label>Données à injecter (JSON)</label><textarea id="sf-canva-data" placeholder='{"CITY":{"type":"text","text":"Paris"}}'></textarea>` : ''}`;
-  }
-}
 
 // Envoie un message construit par le formulaire, via le circuit deja teste
 // (credits, streaming, resultats), sans passer par une saisie libre.
@@ -1953,22 +1944,9 @@ function lancerStudioMedia() {
   envoyerDepuisStudio('Cherche-moi ' + libelle + ' libre de droits : ' + req, false);
 }
 function lancerStudioCanva() {
-  const action = document.getElementById('sf-canva-action')?.value;
-  if (action === 'export') {
-    const id = document.getElementById('sf-canva-design-id')?.value.trim();
-    const format = document.getElementById('sf-canva-format')?.value;
-    if (!id) { showAppToast('⚠️ Indiquez l\'identifiant du design à exporter.'); return; }
-    envoyerDepuisStudio('Exporte mon design Canva ' + id + ' en ' + format, true);
-  } else if (action === 'dataset') {
-    const id = document.getElementById('sf-canva-template-id')?.value.trim();
-    if (!id) { showAppToast('⚠️ Indiquez l\'identifiant du modèle de marque.'); return; }
-    envoyerDepuisStudio('Vérifie les champs à remplir du modèle de marque Canva ' + id, true);
-  } else {
-    const id = document.getElementById('sf-canva-template-id')?.value.trim();
-    const data = document.getElementById('sf-canva-data')?.value.trim();
-    if (!id || !data) { showAppToast('⚠️ Indiquez le modèle de marque et les données à injecter.'); return; }
-    envoyerDepuisStudio('Génère un design à partir du modèle de marque Canva ' + id + ' avec ces données : ' + data, true);
-  }
+  const demande = document.getElementById('sf-canva-demande')?.value.trim();
+  if (!demande) { showAppToast('⚠️ Décrivez ce qu\'il vous faut sur Canva.'); return; }
+  envoyerDepuisStudio(demande, true);
 }
 
 function addMsgUI(role, text, save = true) {
