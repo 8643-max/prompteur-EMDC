@@ -396,6 +396,34 @@ body.resultats-masques .btn-show-right{display:flex}
 .modal-title{font-family:Georgia,serif;font-size:20px;font-weight:bold;margin-bottom:10px}
 .modal-desc{font-size:13px;color:var(--text-secondary);line-height:1.65;margin-bottom:24px;max-width:340px;margin-left:auto;margin-right:auto}
 .modal-actions{display:flex;gap:10px;flex-direction:column}
+.modal-box-wide{width:640px;max-width:95vw;max-height:82vh;overflow-y:auto;background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:18px;padding:30px 34px;box-shadow:0 24px 64px rgba(0,0,0,.7);text-align:left}
+.modal-wide-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.modal-wide-close{background:none;border:none;color:var(--text-secondary);font-size:20px;cursor:pointer;line-height:1;padding:4px}
+.modal-wide-close:hover{color:var(--text-primary)}
+.modal-wide-title{font-family:Georgia,serif;font-size:22px;font-weight:bold}
+.modal-wide-tabs{display:flex;gap:8px;margin:18px 0 6px;border-bottom:1px solid var(--border);padding-bottom:0}
+.modal-wide-tab{padding:8px 14px;font-size:13px;font-weight:600;color:var(--text-secondary);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.modal-wide-tab.active{color:var(--gold);border-bottom-color:var(--gold)}
+.feature-card{border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-top:14px;position:relative}
+.feature-card-title{font-weight:700;font-size:14px;margin-bottom:6px}
+.feature-card-desc{font-size:13px;color:var(--text-secondary);line-height:1.6;white-space:pre-line}
+.feature-card-date{font-size:11px;color:var(--text-secondary);margin-top:8px;opacity:.7}
+.feature-card-admin-actions{position:absolute;top:12px;right:14px;display:flex;gap:8px}
+.feature-card-admin-actions button{background:none;border:none;cursor:pointer;font-size:14px;color:var(--text-secondary);padding:2px}
+.feature-card-admin-actions button:hover{color:var(--gold)}
+.academie-section-title{font-family:Georgia,serif;font-size:16px;font-weight:bold;margin:22px 0 4px}
+.academie-section-sub{font-size:12px;color:var(--text-secondary);margin-bottom:14px}
+.academie-tutorials{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.academie-tutorial-card{border:1px solid var(--border);border-radius:12px;padding:14px;cursor:pointer;transition:border-color .15s}
+.academie-tutorial-card:hover{border-color:var(--gold)}
+.academie-tutorial-icon{font-size:22px;margin-bottom:8px}
+.academie-tutorial-title{font-size:13px;font-weight:600;line-height:1.4}
+.academie-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.academie-grid-card{border:1px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;transition:border-color .15s}
+.academie-grid-card:hover{border-color:var(--gold)}
+.feature-admin-form{border:1px dashed var(--border-strong);border-radius:12px;padding:14px;margin-top:14px}
+.feature-admin-form input,.feature-admin-form textarea{width:100%;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:8px 10px;font-size:13px;margin-bottom:8px;font-family:inherit}
+.feature-admin-form textarea{min-height:70px;resize:vertical}
 .btn-modal-primary{padding:12px 20px;background:linear-gradient(135deg,var(--gold-muted),var(--gold),var(--gold-light));color:var(--on-accent);font-weight:700;font-size:14px;border:none;border-radius:var(--radius);cursor:pointer;transition:opacity .2s}
 .btn-modal-primary:hover{opacity:.88}
 .btn-modal-secondary{padding:10px 20px;background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-size:13px;border-radius:var(--radius);cursor:pointer;transition:background .15s}
@@ -602,6 +630,8 @@ body.resultats-masques .btn-show-right{display:flex}
         <div class="dropdown-item" id="dd-login" onclick="openLoginModal()" style="color:var(--gold);font-weight:600">🔑 Se connecter / Créer un compte</div>
         <div class="dropdown-item" onclick="openSettings('general')">⚙️ Paramètres</div>
         <div class="dropdown-item" onclick="openSettings('facturation')">💳 Facturation</div>
+        <div class="dropdown-item" onclick="openFeaturesModal()">🚀 Fonctionnalités de l'application</div>
+        <div class="dropdown-item" onclick="openAcademieModal()">🎓 EMDC Académie</div>
         <div class="dropdown-item" id="dd-switch" onclick="switchAdminAccount()" style="display:none;color:var(--gold)">🔄 Basculer sur mon autre compte</div>
         <div class="dropdown-item danger" id="dd-logout" onclick="doLogout()">🚪 Déconnexion</div>
       </div>
@@ -856,6 +886,14 @@ body.resultats-masques .btn-show-right{display:flex}
         <div class="srow">
           <div class="srow-left"><div class="srow-label">Annoncer les étapes à voix haute</div><div class="srow-desc">Il dit ce qu'il fait pendant qu'il travaille, sans regarder l'écran</div></div>
           <label class="toggle"><input type="checkbox" id="s-etapes-voix" onchange="savePref('etapesVoix',this.checked)"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="srow">
+          <div class="srow-left"><div class="srow-label">Son à la fin d'une mission</div><div class="srow-desc">Un petit carillon quand le travail est terminé</div></div>
+          <label class="toggle"><input type="checkbox" id="s-son-fin" onchange="savePref('sonFinTache',this.checked)"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="srow">
+          <div class="srow-left"><div class="srow-label">Notifications navigateur</div><div class="srow-desc">Être prévenu quand une mission se termine, même onglet en arrière-plan</div></div>
+          <label class="toggle"><input type="checkbox" id="s-notifs" onchange="toggleNotifsPref(this)"><span class="toggle-slider"></span></label>
         </div>
         <div class="sfield">
           <label>Voix de lecture</label>
@@ -1211,6 +1249,53 @@ body.resultats-masques .btn-show-right{display:flex}
       <button class="btn-modal-primary" onclick="openSettings('facturation');closeTokenModal()">💳 Recharger mes jetons</button>
       <button class="btn-modal-secondary" onclick="closeTokenModal()">Continuer en mode chat</button>
     </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL FONCTIONNALITES ═══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-features">
+  <div class="modal-box-wide">
+    <div class="modal-wide-header">
+      <span class="modal-wide-title gold-text">🚀 Fonctionnalités de l'application</span>
+      <button class="modal-wide-close" onclick="closeFeaturesModal()">✕</button>
+    </div>
+    <div class="modal-wide-tabs">
+      <div class="modal-wide-tab active" id="ftab-origine" onclick="switchFeatureTab('origine')">Fonctionnalités d'origine</div>
+      <div class="modal-wide-tab" id="ftab-nouvelle" onclick="switchFeatureTab('nouvelle')">Nouveautés</div>
+    </div>
+    <div id="features-list"></div>
+    <div id="features-admin-add" style="display:none;margin-top:16px">
+      <button class="btn-modal-secondary" onclick="toggleFeatureForm()">+ Ajouter une fonctionnalité</button>
+      <div class="feature-admin-form" id="feature-form" style="display:none">
+        <input type="text" id="ff-titre" placeholder="Titre">
+        <textarea id="ff-description" placeholder="Description"></textarea>
+        <input type="number" id="ff-ordre" placeholder="Ordre (1, 2, 3...)" value="1">
+        <input type="hidden" id="ff-id">
+        <div style="display:flex;gap:8px">
+          <button class="btn-modal-primary" style="flex:1" onclick="saveFeatureEntry()">Enregistrer</button>
+          <button class="btn-modal-secondary" onclick="toggleFeatureForm()">Annuler</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL EMDC ACADEMIE ═════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-academie">
+  <div class="modal-box-wide">
+    <div class="modal-wide-header">
+      <span class="modal-wide-title gold-text">🎓 EMDC Académie</span>
+      <button class="modal-wide-close" onclick="closeAcademieModal()">✕</button>
+    </div>
+    <p class="modal-desc" style="text-align:left;max-width:none;margin:8px 0 0">Apprenez à tirer le meilleur de votre Copilote, une fonctionnalité à la fois.</p>
+
+    <div class="academie-section-title">Prise en main</div>
+    <div class="academie-section-sub">Les bases, en quelques minutes chacune.</div>
+    <div class="academie-tutorials" id="academie-tutorials"></div>
+
+    <div class="academie-section-title">Parcourir par fonctionnalité</div>
+    <div class="academie-section-sub">Des guides pratiques pour chaque outil de votre Copilote.</div>
+    <div class="academie-grid" id="academie-grid"></div>
   </div>
 </div>
 
@@ -1752,7 +1837,7 @@ async function suivreJobN8n(jobId, userId, taskSid, ctrl, brut) {
       _etapesParSession.set(taskSid, j.etapes);
       if (j.etapes.length > vues) { vues = j.etapes.length; updateSteps(taskSid, j.etapes); }
     }
-    if (j.statut === 'termine') return brut ? { statut: 'termine', resultat: j.resultat || null } : (j.resultat || null);
+    if (j.statut === 'termine') { annoncerFinMission(j.resultat); return brut ? { statut: 'termine', resultat: j.resultat || null } : (j.resultat || null); }
     if (j.statut === 'annule') throw stop();
     if (j.statut === 'erreur') {
       // Le serveur compose un compte rendu du travail deja fait : on le
@@ -1832,6 +1917,7 @@ async function suivreJobSupabase(jobId, userId, taskSid, ctrl, brut) {
         if (j.etapes.length > vues) { vues = j.etapes.length; updateSteps(taskSid, j.etapes); }
       }
       if (j.statut === 'termine') {
+        annoncerFinMission(j.resultat);
         return rendre(brut ? { statut: 'termine', resultat: j.resultat || null } : (j.resultat || null));
       }
       if (j.statut === 'annule') return rejeter(stop());
@@ -3121,6 +3207,8 @@ function initVocal() {
   const p = DB.prefs();
   const l = document.getElementById('s-lecture'); if (l) l.checked = !!p.lectureVoix;
   const e = document.getElementById('s-etapes-voix'); if (e) e.checked = !!p.etapesVoix;
+  const sf = document.getElementById('s-son-fin'); if (sf) sf.checked = !!p.sonFinTache;
+  const nt = document.getElementById('s-notifs'); if (nt) nt.checked = !!p.notifsMission && typeof Notification !== 'undefined' && Notification.permission === 'granted';
   const fa = document.getElementById('s-file-attente'); if (fa) fa.checked = !!p.fileAttente;
   // Les voix arrivent de facon asynchrone : on recharge la liste des qu elle change.
   if (lectureDisponible()) {
@@ -3735,7 +3823,215 @@ function toggleRightPanel() {
 }
 function closeRightPanel() { document.getElementById('right-panel').classList.remove('mobile-open'); }
 
-/* ═══ BASE DOCUMENTAIRE RAG ════════════════════════════════════════ */
+/* ═══ FONCTIONNALITES DE L'APPLICATION (panneau profil) ═══════════════
+   Contenu ecrit et modifie uniquement par l administrateur EMDC (verifie
+   aussi cote serveur dans le Routeur n8n, pas seulement ici) : la lecture
+   est publique, l ecriture passe par ASSISTANT_URL qui refuse tout compte
+   hors liste admin. */
+let _featureTab = 'origine';
+let _featuresCache = [];
+
+async function openFeaturesModal() {
+  document.getElementById('avatar-menu').classList.remove('open');
+  document.getElementById('modal-features').classList.add('open');
+  const isAdmin = isAdminAccount(S.user?.email);
+  document.getElementById('features-admin-add').style.display = isAdmin ? '' : 'none';
+  await loadFeatures();
+}
+function closeFeaturesModal() { document.getElementById('modal-features').classList.remove('open'); }
+
+function switchFeatureTab(tab) {
+  _featureTab = tab;
+  document.getElementById('ftab-origine').classList.toggle('active', tab === 'origine');
+  document.getElementById('ftab-nouvelle').classList.toggle('active', tab === 'nouvelle');
+  renderFeatures();
+}
+
+async function loadFeatures() {
+  const list = document.getElementById('features-list');
+  list.innerHTML = '<p class="modal-desc" style="text-align:left;max-width:none">Chargement…</p>';
+  try {
+    const { data, error } = await _supa.from('app_features').select('*').order('ordre', { ascending: true });
+    _featuresCache = error ? [] : (data || []);
+  } catch (_) { _featuresCache = []; }
+  renderFeatures();
+}
+
+function renderFeatures() {
+  const list = document.getElementById('features-list');
+  const isAdmin = isAdminAccount(S.user?.email);
+  const items = _featuresCache.filter(f => f.categorie === _featureTab);
+  if (!items.length) {
+    list.innerHTML = '<p class="modal-desc" style="text-align:left;max-width:none;margin-top:16px">' +
+      (_featureTab === 'origine' ? "Rien à afficher pour l'instant." : "Aucune nouveauté pour l'instant — revenez bientôt !") + '</p>';
+    return;
+  }
+  list.innerHTML = items.map(f => `
+    <div class="feature-card">
+      ${isAdmin ? `<div class="feature-card-admin-actions">
+        <button onclick="editFeatureEntry('${f.id}')" title="Modifier">✏️</button>
+        <button onclick="deleteFeatureEntry('${f.id}')" title="Supprimer">🗑️</button>
+      </div>` : ''}
+      <div class="feature-card-title">${escapeHtml(f.titre)}</div>
+      <div class="feature-card-desc">${escapeHtml(f.description)}</div>
+      <div class="feature-card-date">${new Date(f.cree_le).toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+    </div>
+  `).join('');
+}
+
+function toggleFeatureForm() {
+  const form = document.getElementById('feature-form');
+  const show = form.style.display === 'none';
+  form.style.display = show ? '' : 'none';
+  if (show) {
+    document.getElementById('ff-id').value = '';
+    document.getElementById('ff-titre').value = '';
+    document.getElementById('ff-description').value = '';
+    document.getElementById('ff-ordre').value = (_featuresCache.filter(f => f.categorie === _featureTab).length + 1);
+  }
+}
+
+function editFeatureEntry(id) {
+  const f = _featuresCache.find(x => x.id === id);
+  if (!f) return;
+  document.getElementById('feature-form').style.display = '';
+  document.getElementById('ff-id').value = f.id;
+  document.getElementById('ff-titre').value = f.titre;
+  document.getElementById('ff-description').value = f.description;
+  document.getElementById('ff-ordre').value = f.ordre;
+}
+
+async function saveFeatureEntry() {
+  const id = document.getElementById('ff-id').value;
+  const titre = document.getElementById('ff-titre').value.trim();
+  const description = document.getElementById('ff-description').value.trim();
+  const ordre = Number(document.getElementById('ff-ordre').value) || 1;
+  if (!titre || !description) { showAppToast('⚠️ Titre et description sont obligatoires.'); return; }
+  try {
+    const r = await fetch(ASSISTANT_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'save_feature', user_id: S.user?.email, id: id || undefined, categorie: _featureTab, titre, description, ordre }),
+    });
+    const d = await r.json();
+    if (!d.success) { showAppToast('⚠️ ' + (d.error || "Échec de l'enregistrement.")); return; }
+    toggleFeatureForm();
+    showAppToast('✅ Fonctionnalité enregistrée.');
+    await loadFeatures();
+  } catch (_) { showAppToast('⚠️ Échec de l\'enregistrement — vérifiez votre connexion.'); }
+}
+
+async function deleteFeatureEntry(id) {
+  if (!confirm('Supprimer cette fonctionnalité ?')) return;
+  try {
+    const r = await fetch(ASSISTANT_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete_feature', user_id: S.user?.email, id }),
+    });
+    const d = await r.json();
+    if (!d.success) { showAppToast('⚠️ ' + (d.error || 'Échec de la suppression.')); return; }
+    showAppToast('✅ Fonctionnalité supprimée.');
+    await loadFeatures();
+  } catch (_) { showAppToast('⚠️ Échec de la suppression — vérifiez votre connexion.'); }
+}
+
+/* ═══ EMDC ACADEMIE (panneau profil) ═══════════════════════════════════
+   Contenu statique, adapte aux outils reellement disponibles dans le
+   Copilote (rien d'invente). Chaque carte pointe vers une page a venir
+   sur emdcconsulting.wordpress.com -- les pages seront redigees une fois
+   l'application terminee ; les liens peuvent renvoyer une 404 en attendant. */
+const ACADEMIE_BASE = 'https://emdcconsulting.wordpress.com/academie/';
+const ACADEMIE_TUTORIELS = [
+  { icone: '💬', titre: 'Poser votre première question', slug: 'premiere-question' },
+  { icone: '📸', titre: 'Analyser un document ou une image', slug: 'analyser-document' },
+  { icone: '⚡', titre: 'Activer le mode Vision Avancée', slug: 'vision-avancee' },
+];
+const ACADEMIE_FONCTIONS = [
+  { icone: '📄', titre: 'Documents Google (Docs, Sheets, Slides, Drive)', slug: 'documents-google' },
+  { icone: '🔍', titre: 'Analyse de fichiers (PDF, images)', slug: 'analyse-fichiers' },
+  { icone: '🌐', titre: 'Navigation web autonome', slug: 'navigation-web' },
+  { icone: '📚', titre: 'Base documentaire personnelle', slug: 'base-documentaire' },
+  { icone: '💻', titre: 'Agent local (synchro ordinateur)', slug: 'agent-local' },
+  { icone: '🎨', titre: 'Studio visuel & voix (image, voix off)', slug: 'studio-visuel-voix' },
+  { icone: '🚀', titre: 'Déploiement web (dépôt + site en ligne)', slug: 'webdev-deploy' },
+  { icone: '🖌️', titre: 'Connexion Canva', slug: 'canva-connect' },
+  { icone: '🎞️', titre: 'Photos, vidéos et sons libres de droits', slug: 'media-sourcing' },
+];
+
+function openAcademieModal() {
+  document.getElementById('avatar-menu').classList.remove('open');
+  document.getElementById('modal-academie').classList.add('open');
+  document.getElementById('academie-tutorials').innerHTML = ACADEMIE_TUTORIELS.map(t => `
+    <a class="academie-tutorial-card" href="${ACADEMIE_BASE}${t.slug}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:block">
+      <div class="academie-tutorial-icon">${t.icone}</div>
+      <div class="academie-tutorial-title">${escapeHtml(t.titre)}</div>
+    </a>
+  `).join('');
+  document.getElementById('academie-grid').innerHTML = ACADEMIE_FONCTIONS.map(f => `
+    <a class="academie-grid-card" href="${ACADEMIE_BASE}${f.slug}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+      <span>${f.icone}</span><span>${escapeHtml(f.titre)}</span>
+    </a>
+  `).join('');
+}
+function closeAcademieModal() { document.getElementById('modal-academie').classList.remove('open'); }
+
+/* ═══ SON DE FIN DE TACHE ══════════════════════════════════════════════
+   Synthetise au clavier via Web Audio (pas de fichier a heberger) : un
+   petit carillon a 3 notes, joue une seule fois par mission terminee. */
+let _audioCtx = null;
+function jouerCarillonFin() {
+  if (!DB.prefs().sonFinTache) return;
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const notes = [880, 1108.73, 1318.51]; // la5, do#6, mi6 -- accord majeur, clair et bref
+    notes.forEach((freq, i) => {
+      const t0 = _audioCtx.currentTime + i * 0.09;
+      const osc = _audioCtx.createOscillator();
+      const gain = _audioCtx.createGain();
+      osc.type = 'sine'; osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, t0);
+      gain.gain.linearRampToValueAtTime(0.18, t0 + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.5);
+      osc.connect(gain); gain.connect(_audioCtx.destination);
+      osc.start(t0); osc.stop(t0 + 0.55);
+    });
+  } catch (_) {}
+}
+
+/* ═══ NOTIFICATIONS NAVIGATEUR ═════════════════════════════════════════
+   Optionnelles (le client active depuis Parametres) : previennent quand
+   une mission se termine, meme onglet en arriere-plan. Pas de serveur push
+   requis -- fonctionne tant que l'onglet reste ouvert (meme minimise). */
+async function toggleNotifsPref(checkbox) {
+  if (!checkbox.checked) { savePref('notifsMission', false); return; }
+  const ok = await demanderPermissionNotifications();
+  checkbox.checked = ok;
+  savePref('notifsMission', ok);
+  if (ok) showAppToast('🔔 Notifications activées.');
+}
+async function demanderPermissionNotifications() {
+  if (!('Notification' in window)) { showAppToast('⚠️ Les notifications ne sont pas prises en charge par ce navigateur.'); return false; }
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') { showAppToast('⚠️ Les notifications sont bloquées dans les réglages de votre navigateur.'); return false; }
+  const res = await Notification.requestPermission();
+  return res === 'granted';
+}
+function notifierMissionTerminee(texte) {
+  if (!DB.prefs().notifsMission) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (document.visibilityState === 'visible') return; // deja sous ses yeux, pas la peine
+  try {
+    const n = new Notification('Copilote EMDC — mission terminée', {
+      body: String(texte || '').slice(0, 180) || 'Votre demande est prête.',
+      icon: LOGO,
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+  } catch (_) {}
+}
+function annoncerFinMission(texte) {
+  jouerCarillonFin();
+  notifierMissionTerminee(texte);
+}
+
 const DOCS_URL = 'https://n8n.emdcconsulting.com/webhook/saas/docs';
 const ASSISTANT_URL = 'https://n8n.emdcconsulting.com/webhook/saas/assistant';
 // Travail en arriere-plan : l'agent accuse reception tout de suite, puis
