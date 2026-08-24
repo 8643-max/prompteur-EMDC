@@ -259,6 +259,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 .doc-item-del{background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:13px;cursor:pointer;width:26px;height:26px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:color .15s,border-color .15s}
 .doc-item-del:hover{color:var(--red);border-color:var(--red)}
 .upload-preview-name{font-size:13px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.upload-preview-thumb{width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong);flex-shrink:0}
 .upload-preview-size{font-size:11px;color:var(--text-muted)}
 .upload-preview-remove{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;transition:color .15s;padding:0 4px}
 .upload-preview-remove:hover{color:var(--red)}
@@ -462,6 +463,30 @@ body.resultats-masques .btn-show-right{display:flex}
 .studio-form textarea{min-height:90px;resize:vertical}
 .studio-form-submit{margin-top:16px;width:100%;padding:12px;background:linear-gradient(135deg,var(--gold-muted),var(--gold),var(--gold-light));color:var(--on-accent);font-weight:700;font-size:14px;border:none;border-radius:var(--radius);cursor:pointer}
 .studio-form-submit:hover{opacity:.9}
+.web-view{max-width:560px;width:100%;margin:0 auto;padding:40px 20px;text-align:center}
+.web-view-icon{font-size:52px;margin-bottom:18px;filter:drop-shadow(0 0 14px var(--gold-glow))}
+.web-view-input-row{display:flex;gap:10px;margin-top:22px}
+.web-view-input-row input{flex:1;background:var(--bg-elevated);border:1px solid var(--border-strong);border-radius:12px;color:var(--text-primary);padding:12px 16px;font-size:14px;font-family:inherit}
+.web-view-input-row button{background:linear-gradient(135deg,var(--gold-muted),var(--gold),var(--gold-light));color:var(--on-accent);border:none;border-radius:12px;width:48px;font-size:17px;cursor:pointer}
+.web-view-input-row button:hover{opacity:.9}
+/* Menu lateral repliable : ne garde qu'un rail d'icones pour laisser la
+   place au chat, sur le modele fourni (rail minimal a gauche). */
+.btn-collapse-sidebar{background:none;border:1px solid var(--border);color:var(--text-secondary);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:13px;margin-left:6px;flex-shrink:0}
+.btn-collapse-sidebar:hover{color:var(--gold);border-color:var(--gold-muted)}
+.sidebar-mini{display:none;flex-direction:column;align-items:center;gap:10px;padding:12px 0;flex:1}
+.mini-btn{width:38px;height:38px;border-radius:10px;background:none;border:1px solid transparent;color:var(--text-secondary);font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.mini-btn:hover{background:var(--bg-elevated);border-color:var(--border);color:var(--gold)}
+.mini-spacer{flex:1}
+.sidebar.collapsed .sidebar-scroll,.sidebar.collapsed .btn-new-session span:last-child{display:none}
+.sidebar.collapsed .btn-collapse-sidebar{transform:scaleX(-1)}
+.sidebar.collapsed .sidebar-mini{display:flex}
+.sidebar.collapsed .btn-new-session{justify-content:center;padding-left:0;padding-right:0}
+/* Panneau Resultats redimensionnable a la souris, en plus du bouton agrandir/reduire deja present. */
+.right-panel{position:relative}
+.right-panel-resizer{position:absolute;left:-3px;top:0;bottom:0;width:6px;cursor:col-resize;background:transparent;z-index:5}
+.right-panel-resizer:hover,.right-panel-resizer.dragging{background:var(--gold-dim)}
+.history-toggle-plus{text-align:center;font-size:11.5px;color:var(--gold-muted);cursor:pointer;padding:8px 0;font-weight:600}
+.history-toggle-plus:hover{color:var(--gold)}
 .btn-modal-primary{padding:12px 20px;background:linear-gradient(135deg,var(--gold-muted),var(--gold),var(--gold-light));color:var(--on-accent);font-weight:700;font-size:14px;border:none;border-radius:var(--radius);cursor:pointer;transition:opacity .2s}
 .btn-modal-primary:hover{opacity:.88}
 .btn-modal-secondary{padding:10px 20px;background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-size:13px;border-radius:var(--radius);cursor:pointer;transition:background .15s}
@@ -681,7 +706,16 @@ body.resultats-masques .btn-show-right{display:flex}
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-top">
         <button class="btn-new-session" onclick="newSession()"><span>＋</span> Nouvelle session</button>
+        <button class="btn-collapse-sidebar" onclick="toggleSidebarCollapse()" title="Replier le menu">«</button>
         <button class="btn-close-sidebar" onclick="closeSidebar()">✕</button>
+      </div>
+      <div class="sidebar-mini" id="sidebar-mini">
+        <button class="mini-btn" onclick="newSession()" title="Nouvelle session">＋</button>
+        <button class="mini-btn" id="mini-general" onclick="depuisMiniAllerA('general')" title="Général &amp; Documents">💬</button>
+        <button class="mini-btn" id="mini-studio" onclick="depuisMiniAllerA('studio-image')" title="Studio Média &amp; Création">🎨</button>
+        <button class="mini-btn" id="mini-concepteur" onclick="depuisMiniAllerA('webdev')" title="Concepteur : Web &amp; Automatisation">⚡</button>
+        <div class="mini-spacer"></div>
+        <button class="mini-btn" onclick="toggleSidebarCollapse()" title="Déplier le menu">☰</button>
       </div>
       <div class="sidebar-scroll">
         <div class="sidebar-section">
@@ -797,6 +831,15 @@ body.resultats-masques .btn-show-right{display:flex}
             <div class="chip" onclick="useChip('Comment fonctionne EMDC Copilote ?')">ℹ️ En savoir plus</div>
           </div>
         </div>
+        <div class="web-view" id="web-view" style="display:none">
+          <div class="web-view-icon">🌐🔍</div>
+          <div class="studio-view-title">Recherche Web</div>
+          <div class="studio-view-sub">Réservé au mode Vision Avancée. Précisez le site à visiter, ou le sujet à rechercher.</div>
+          <div class="web-view-input-row">
+            <input type="text" id="web-view-input" placeholder="Ex : va sur monsite.com et dis-moi... — ou un sujet à rechercher" onkeydown="if(event.key==='Enter')lancerWebView()">
+            <button onclick="lancerWebView()">🚀</button>
+          </div>
+        </div>
         <div class="studio-view" id="studio-view" style="display:none">
           <div class="studio-view-header">
             <div class="studio-view-title" id="studio-view-title">🎨 Studio Média &amp; Création</div>
@@ -846,6 +889,7 @@ body.resultats-masques .btn-show-right{display:flex}
 
     <!-- RIGHT PANEL -->
     <aside class="right-panel" id="right-panel">
+      <div class="right-panel-resizer" id="right-panel-resizer" title="Glisser pour redimensionner"></div>
       <div class="right-panel-header">📁 Résultats
         <button class="btn-agrandir-right" id="btn-agrandir-right" onclick="basculerTailleResultats()" title="Agrandir le panneau" aria-label="Agrandir le panneau Résultats">⤢</button>
         <button class="btn-masquer-right" onclick="masquerResultats()" title="Masquer le panneau (plus de place pour la conversation)" aria-label="Masquer le panneau Résultats">🚫</button>
@@ -991,10 +1035,6 @@ body.resultats-masques .btn-show-right{display:flex}
         <div class="srow">
           <div class="srow-left"><div class="srow-label">Annoncer les étapes à voix haute</div><div class="srow-desc">Il dit ce qu'il fait pendant qu'il travaille, sans regarder l'écran</div></div>
           <label class="toggle"><input type="checkbox" id="s-etapes-voix" onchange="savePref('etapesVoix',this.checked)"><span class="toggle-slider"></span></label>
-        </div>
-        <div class="srow">
-          <div class="srow-left"><div class="srow-label">Son à la fin d'une mission</div><div class="srow-desc">Un petit carillon quand le travail est terminé</div></div>
-          <label class="toggle"><input type="checkbox" id="s-son-fin" onchange="savePref('sonFinTache',this.checked)"><span class="toggle-slider"></span></label>
         </div>
         <div class="srow">
           <div class="srow-left"><div class="srow-label">Notifications navigateur</div><div class="srow-desc">Être prévenu quand une mission se termine, même onglet en arrière-plan</div></div>
@@ -1443,9 +1483,9 @@ const toolConfig = {
   analyse:      { icon:'📄', label:'Analyseur de fichiers', welcome:'Mode **Analyse de fichiers** activé. Joignez votre document avec 📎 et posez votre question.', chips:['📄 Analyser un PDF','🖼️ Analyser une image','📊 Lire un Excel'], chipTexts:['Analyse ce document PDF et résume les points clés','Analyse cette image et extrait le texte','Analyse ce fichier Excel et donne-moi un résumé'] },
   presentation: { icon:'📊', label:'Présentations', welcome:'Mode **Présentation** activé. Décrivez le sujet et je génère vos diapositives Google Slides.', chips:['📊 Nouvelle présentation','🎨 Modifier le style','📋 Ajouter des données'], chipTexts:['Génère une présentation sur la digitalisation des PME','Explique-moi comment modifier le style de mes slides','Ajoute les données de ce fichier à ma présentation'] },
   recherche:    { icon:'🔍', label:'Recherche documentaire', welcome:'Mode **Recherche** activé. Posez votre question et je cherche dans vos documents.', chips:['🔍 Recherche libre','📁 Chercher dans Drive','📝 Résumer'], chipTexts:['Recherche des informations sur la gestion de projet agile','Cherche dans mon Drive les documents sur les fournisseurs','Résume les points clés de ce document'] },
-  sheet:        { icon:'📋', label:'Tableaux Google Sheets', welcome:'Mode **Tableau** activé. Décrivez les données à intégrer dans votre Google Sheet.', chips:['📋 Remplir un tableau','📈 Créer des formules','📊 Analyser des données'], chipTexts:['Remplis mon tableau avec ces données','Crée des formules pour calculer les totaux automatiquement','Analyse les données de ce tableau et dis-moi ce que tu vois'] },
+  sheet:        { icon:'📋', label:'Tableaux Google Sheets', welcome:'Mode **Tableau** activé. Décrivez les données à intégrer dans votre Google Sheet.', chips:['📋 Remplir un tableau','📈 Créer des formules','📊 Analyser des données'], chipTexts:['Remplis mon tableau [nom du tableau] avec ces données : ','Crée des formules dans [nom du tableau] pour calculer : ','Analyse les données de [nom du tableau] et dis-moi ce que tu vois'] },
   documents:    { icon:'📚', label:'Base documentaire', welcome:'Mode **Base documentaire** activé. Ajoutez vos fichiers dans le panneau de droite, puis posez des questions sur leur contenu.', chips:['📄 Que contient ma base ?','🔍 Chercher une info','📋 Résumer un doc'], chipTexts:['Que contient ma base documentaire ?','Recherche des informations sur les tarifs','Résume le document le plus récent'] },
-  navigation:   { icon:'🌐', label:'Navigation Web', welcome:'Mode **Navigation Web** activé. Dites-moi quel site visiter et ce qu\'il faut y faire (cliquer, remplir un formulaire, extraire une information, capture d\'écran). Chaque action consomme des jetons.', chips:['🌐 Visiter un site','📝 Remplir un formulaire','🔍 Extraire une info'], chipTexts:['Va sur ce site et dis-moi ce qu\'il propose','Remplis ce formulaire en ligne avec mes informations','Extrait cette information de cette page web'] },
+  navigation:   { icon:'🌐', label:'Navigation Web', welcome:'Mode **Navigation Web** activé. Dites-moi quel site visiter et ce qu\'il faut y faire (cliquer, remplir un formulaire, extraire une information, capture d\'écran). Chaque action consomme des jetons.', chips:['🌐 Visiter un site','📝 Remplir un formulaire','🔍 Extraire une info'], chipTexts:['Va sur [adresse du site] et dis-moi : ','Remplis le formulaire sur [adresse du site] avec ces informations : ','Va sur [adresse du site] et extrais-moi : '] },
   'studio-image': { icon:'🎨', label:'Générer une image', welcome:'Mode **Studio Visuel** activé. Décrivez l\'image à générer (style photoréaliste ou illustration). Réservé au mode Vision Avancée.', chips:['🌅 Photo de produit','🏢 Illustration business','🎨 Style libre'], chipTexts:['Génère une photo de produit sur fond neutre pour ma boutique','Génère une illustration professionnelle pour mon activité','Génère une image de : '] },
   'studio-voix':  { icon:'🎙️', label:'Générer une voix off', welcome:'Mode **Voix off** activé. Collez le texte à lire, je génère la piste audio. Réservé au mode Vision Avancée.', chips:['🎙️ Voix off pub','📢 Message vocal','🗣️ Narration'], chipTexts:['Génère une voix off pour cette publicité : ','Génère un message vocal pour mes clients : ','Génère une narration pour ma présentation : '] },
   media:        { icon:'🎞️', label:'Médiathèque libre de droits', welcome:'Mode **Médiathèque** activé, gratuit. Décrivez la photo, la vidéo ou le son que vous cherchez (Pexels, Freesound).', chips:['🖼️ Chercher une photo','🎬 Chercher une vidéo','🎵 Chercher un son'], chipTexts:['Cherche-moi une photo libre de droits de : ','Cherche-moi une vidéo libre de droits de : ','Cherche-moi un son libre de droits de : '] },
@@ -1516,6 +1556,7 @@ function loadSession(id) {
 /* ═══ HISTORY RENDER ════════════════════════════════════════════════ */
 let openCtxId = null;
 
+const HISTORIQUE_REPLIE_TAILLE = 6;
 function renderHistory() {
   const container = document.getElementById('history-list');
   const cfg = toolConfig[S.currentTool];
@@ -1526,8 +1567,17 @@ function renderHistory() {
     container.innerHTML = '<div class="history-empty">Aucune session pour cet outil</div>';
     return;
   }
+  const deplie = !!DB.prefs().historiqueDeplie;
+  const visibles = deplie ? sessions : sessions.slice(0, HISTORIQUE_REPLIE_TAILLE);
   container.innerHTML = '';
-  sessions.forEach(s => container.appendChild(buildHistoryItem(s)));
+  visibles.forEach(s => container.appendChild(buildHistoryItem(s)));
+  if (sessions.length > HISTORIQUE_REPLIE_TAILLE) {
+    const btn = document.createElement('div');
+    btn.className = 'history-toggle-plus';
+    btn.textContent = deplie ? '▴ Voir moins' : `▾ Voir plus (${sessions.length - HISTORIQUE_REPLIE_TAILLE})`;
+    btn.onclick = () => { savePref('historiqueDeplie', !deplie); renderHistory(); };
+    container.appendChild(btn);
+  }
   updateSessionCount();
 }
 
@@ -1698,9 +1748,63 @@ function selectTool(tool, icon, label) {
 }
 
 /* ═══ MESSAGES ══════════════════════════════════════════════════════ */
+/* ═══ MENU LATERAL REPLIABLE ════════════════════════════════════════
+   Plus d'espace pour le chat quand on n'a pas besoin du menu : tout passe
+   par la conversation, le menu n'est qu'un raccourci vers les outils. */
+const SIDEBAR_W_OUVERT = '236px';
+const SIDEBAR_W_REPLIE = '64px';
+function toggleSidebarCollapse(forceOpen) {
+  const sb = document.getElementById('sidebar');
+  const currentlyOpen = !sb.classList.contains('collapsed');
+  const open = forceOpen !== undefined ? forceOpen : !currentlyOpen;
+  sb.classList.toggle('collapsed', !open);
+  document.documentElement.style.setProperty('--sidebar-w', open ? SIDEBAR_W_OUVERT : SIDEBAR_W_REPLIE);
+  savePref('sidebarCollapsed', !open);
+}
+function depuisMiniAllerA(tool) {
+  toggleSidebarCollapse(true); // redeplie le menu
+  const cfg = toolConfig[tool];
+  if (cfg) selectTool(tool, cfg.icon, cfg.label);
+}
+
+/* ═══ PANNEAU RESULTATS REDIMENSIONNABLE A LA SOURIS ═══════════════════
+   En plus du bouton agrandir/reduire deja present : on peut aussi tirer
+   la bordure pour voir un contenu large (JSON, tableau...) en entier. */
+function initRedimensionnementResultats() {
+  const resizer = document.getElementById('right-panel-resizer');
+  if (!resizer) return;
+  let dragging = false;
+  resizer.addEventListener('mousedown', (e) => {
+    dragging = true;
+    resizer.classList.add('dragging');
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const largeur = Math.min(720, Math.max(240, window.innerWidth - e.clientX));
+    document.documentElement.style.setProperty('--right-w', largeur + 'px');
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    resizer.classList.remove('dragging');
+    document.body.style.userSelect = '';
+    const m = document.documentElement.style.getPropertyValue('--right-w');
+    if (m) savePref('resultatsLargeurManuelle', m.trim());
+  });
+}
+
 function hideWelcome() {
   const w = document.getElementById('welcome-center'); if (w) w.style.display = 'none';
   const sv = document.getElementById('studio-view'); if (sv) sv.style.display = 'none';
+  const wv = document.getElementById('web-view'); if (wv) wv.style.display = 'none';
+}
+
+function lancerWebView() {
+  const val = document.getElementById('web-view-input')?.value.trim();
+  if (!val) { showAppToast('⚠️ Précisez le site ou le sujet à rechercher.'); return; }
+  envoyerDepuisStudio(val, true);
 }
 
 /* ═══ INTERFACE DEDIEE : STUDIO MEDIA & CREATION ═══════════════════════
@@ -1718,19 +1822,26 @@ const STUDIO_CARDS = [
 
 function estOutilStudio(tool) { return STUDIO_CARDS.some(c => c.id === tool); }
 
-function afficherStudioView() {
+// Un seul point d'entree qui decide QUELLE vue centrale afficher (accueil
+// generique, Studio Media, ou Recherche Web), pour ne jamais en montrer
+// deux a la fois par erreur.
+function mettreAJourVueCentrale() {
   const sv = document.getElementById('studio-view');
+  const wv = document.getElementById('web-view');
   const wc = document.getElementById('welcome-center');
-  if (!sv) return;
-  if (S.currentSessionId) { sv.style.display = 'none'; return; }
-  const estStudio = estOutilStudio(S.currentTool);
-  sv.style.display = estStudio ? '' : 'none';
-  if (wc) wc.style.display = estStudio ? 'none' : '';
-  if (estStudio) {
-    renderStudioCards();
-    afficherFormulaireStudio(S.currentTool);
+  if (S.currentSessionId) {
+    if (sv) sv.style.display = 'none';
+    if (wv) wv.style.display = 'none';
+    return;
   }
+  const estStudio = estOutilStudio(S.currentTool);
+  const estWeb = S.currentTool === 'navigation';
+  if (sv) sv.style.display = estStudio ? '' : 'none';
+  if (wv) wv.style.display = estWeb ? '' : 'none';
+  if (wc) wc.style.display = (estStudio || estWeb) ? 'none' : '';
+  if (estStudio) { renderStudioCards(); afficherFormulaireStudio(S.currentTool); }
 }
+function afficherStudioView() { mettreAJourVueCentrale(); }
 
 function renderStudioCards() {
   const box = document.getElementById('studio-cards');
@@ -2840,9 +2951,21 @@ function rendreFichiers() {
     const ext = (f.name.split('.').pop() || '').toLowerCase();
     const row = document.createElement('div');
     row.className = 'upload-file-row';
-    const ic = document.createElement('span');
-    ic.style.fontSize = '22px';
-    ic.textContent = FICONS[ext] || '📎';
+    // Pour une image, on montre la photo elle-meme (pas juste une icone) :
+    // le client doit pouvoir verifier d'un coup d'oeil que c'est la bonne.
+    const estImage = /^image\//.test(f.type || '') || ['png','jpg','jpeg','webp','gif'].includes(ext);
+    let ic;
+    if (estImage) {
+      ic = document.createElement('img');
+      ic.className = 'upload-preview-thumb';
+      ic.alt = f.name;
+      ic.src = URL.createObjectURL(f);
+      ic.onload = () => URL.revokeObjectURL(ic.src);
+    } else {
+      ic = document.createElement('span');
+      ic.style.fontSize = '22px';
+      ic.textContent = FICONS[ext] || '📎';
+    }
     const mid = document.createElement('div');
     mid.style.cssText = 'flex:1;min-width:0';
     const nm = document.createElement('div');
@@ -3451,13 +3574,23 @@ function stopperLecture() {
 }
 
 // Retire le markdown et les adresses : on lit une phrase, pas du code.
+// Une lecture normale : les phrases, avec leurs pauses naturelles (point,
+// virgule...), mais sans faire dire a voix haute des symboles decoratifs
+// (emojis, puces, etc.) qui n ont pas leur place dans une lecture parlee.
+// On NE retire PAS le point/la virgule eux-memes : une voix correcte les
+// transforme en pause, elle ne les prononce pas comme des mots -- les
+// retirer rendrait au contraire la lecture plate et sans rythme.
 function texteLisible(t) {
   return String(t || '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')  // liens markdown -> on ne garde que le libelle
     .replace(/https?:\/\/\S+/g, '')           // adresses restantes : illisibles a voix haute
-    .replace(/[*_`#>|]/g, '')
-    .replace(/[()[\]]/g, ' ')
+    .replace(/[*_`#>|~]/g, '')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}️]/gu, '') // emojis, fleches, symboles divers
+    .replace(/^\s*[•◦▪▸►-]\s+/gm, '')          // puces de liste en debut de ligne
+    .replace(/[()[\]{}]/g, ' ')
+    .replace(/["«»]/g, '')
     .replace(/[-–—]{2,}/g, ' ')
+    .replace(/\n{2,}/g, '. ')                  // un saut de paragraphe devient une vraie pause
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -3525,7 +3658,6 @@ function initVocal() {
   const p = DB.prefs();
   const l = document.getElementById('s-lecture'); if (l) l.checked = !!p.lectureVoix;
   const e = document.getElementById('s-etapes-voix'); if (e) e.checked = !!p.etapesVoix;
-  const sf = document.getElementById('s-son-fin'); if (sf) sf.checked = !!p.sonFinTache;
   const nt = document.getElementById('s-notifs'); if (nt) nt.checked = !!p.notifsMission && typeof Notification !== 'undefined' && Notification.permission === 'granted';
   const fa = document.getElementById('s-file-attente'); if (fa) fa.checked = !!p.fileAttente;
   // Les voix arrivent de facon asynchrone : on recharge la liste des qu elle change.
@@ -4095,6 +4227,8 @@ function closeSidebar() {
 function resultatsMasques() { return !!DB.prefs().resultatsMasques; }
 function largeurResultats() {
   if (resultatsMasques()) return '0px';
+  const manuelle = DB.prefs().resultatsLargeurManuelle;
+  if (manuelle && window.innerWidth >= 960) return manuelle;
   if (!DB.prefs().resultatsAgrandis) return '288px';
   return window.innerWidth < 960 ? '100%' : 'min(760px, 55vw)';
 }
@@ -4293,29 +4427,6 @@ function openAcademieModal() {
 }
 function closeAcademieModal() { document.getElementById('modal-academie').classList.remove('open'); }
 
-/* ═══ SON DE FIN DE TACHE ══════════════════════════════════════════════
-   Synthetise au clavier via Web Audio (pas de fichier a heberger) : un
-   petit carillon a 3 notes, joue une seule fois par mission terminee. */
-let _audioCtx = null;
-function jouerCarillonFin() {
-  if (!DB.prefs().sonFinTache) return;
-  try {
-    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    const notes = [880, 1108.73, 1318.51]; // la5, do#6, mi6 -- accord majeur, clair et bref
-    notes.forEach((freq, i) => {
-      const t0 = _audioCtx.currentTime + i * 0.09;
-      const osc = _audioCtx.createOscillator();
-      const gain = _audioCtx.createGain();
-      osc.type = 'sine'; osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0, t0);
-      gain.gain.linearRampToValueAtTime(0.18, t0 + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.5);
-      osc.connect(gain); gain.connect(_audioCtx.destination);
-      osc.start(t0); osc.stop(t0 + 0.55);
-    });
-  } catch (_) {}
-}
-
 /* ═══ NOTIFICATIONS NAVIGATEUR ═════════════════════════════════════════
    Optionnelles (le client active depuis Parametres) : previennent quand
    une mission se termine, meme onglet en arriere-plan. Pas de serveur push
@@ -4346,8 +4457,10 @@ function notifierMissionTerminee(texte) {
     n.onclick = () => { window.focus(); n.close(); };
   } catch (_) {}
 }
+// Le son de fin de reponse existe deja (playNotifSound, reglage "Son active")
+// -- on ne rejoue pas un second carillon ici, seule la notification navigateur
+// est vraiment nouvelle.
 function annoncerFinMission(texte) {
-  jouerCarillonFin();
   notifierMissionTerminee(texte);
 }
 
@@ -4509,7 +4622,16 @@ async function deleteDoc(filename) {
     alert('Erreur lors de la suppression');
   }
 }
-function useChip(text) { document.getElementById('chat-input').value=text; sendMessage(); }
+// Les suggestions ne partent plus toutes seules : le client voit la
+// consigne dans la zone de saisie, la complete avec ses vraies precisions
+// (quel site, quelles infos...) et envoie lui-meme quand il est pret.
+function useChip(text) {
+  const input = document.getElementById('chat-input');
+  input.value = text;
+  autoResize(input);
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
 function handleKey(e) { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();} }
 function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
 function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
@@ -4529,6 +4651,8 @@ window.addEventListener('DOMContentLoaded', ()=>{
   document.querySelectorAll('.logo-slot').forEach(el => el.src = LOGO);
   ['general','studio','concepteur'].forEach(n => toggleAccordion(n, !!DB.prefs()['accordionOpen_' + n]));
   document.getElementById('acc-general').classList.add('open'); // toujours visible au premier chargement
+  toggleSidebarCollapse(!DB.prefs().sidebarCollapsed);
+  initRedimensionnementResultats();
   // Coller une image n'importe ou dans l'app (pas seulement dans la zone d'ecriture)
   document.addEventListener('paste', (e) => {
     if (e.defaultPrevented) return;
