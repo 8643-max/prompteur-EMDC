@@ -396,6 +396,16 @@ body.resultats-masques .btn-show-right{display:flex}
 .modal-title{font-family:Georgia,serif;font-size:20px;font-weight:bold;margin-bottom:10px}
 .modal-desc{font-size:13px;color:var(--text-secondary);line-height:1.65;margin-bottom:24px;max-width:340px;margin-left:auto;margin-right:auto}
 .modal-actions{display:flex;gap:10px;flex-direction:column}
+.tool-accordion{margin-bottom:2px}
+.tool-accordion-head{display:flex;align-items:center;gap:8px;padding:9px 10px;cursor:pointer;border-radius:8px;font-size:12px;font-weight:700;color:var(--text-secondary);letter-spacing:.03em;text-transform:uppercase}
+.tool-accordion-head:hover{background:var(--bg-elevated)}
+.tool-accordion-chevron{margin-left:auto;font-size:10px;transition:transform .15s}
+.tool-accordion.open .tool-accordion-chevron{transform:rotate(90deg)}
+.tool-accordion-body{display:none;padding-left:2px}
+.tool-accordion.open .tool-accordion-body{display:block}
+.tool-item.soon{opacity:.55;cursor:pointer}
+.tool-item.soon .tool-soon-badge{margin-left:auto;font-size:9px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:1px 6px;color:var(--text-muted);letter-spacing:.02em}
+.tool-item{display:flex;align-items:center;gap:8px}
 .modal-box-wide{width:640px;max-width:95vw;max-height:82vh;overflow-y:auto;background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:18px;padding:30px 34px;box-shadow:0 24px 64px rgba(0,0,0,.7);text-align:left}
 .modal-wide-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 .modal-wide-close{background:none;border:none;color:var(--text-secondary);font-size:20px;cursor:pointer;line-height:1;padding:4px}
@@ -617,7 +627,7 @@ body.resultats-masques .btn-show-right{display:flex}
     <span class="badge-workspace">AI Workspace</span>
     <div class="header-spacer"></div>
     <div class="token-counter" onclick="openSettings('facturation')">
-      <span class="token-bolt">⚡</span><span class="token-count" id="hdr-tokens">42</span><span class="token-label">jetons</span>
+      <span class="token-bolt">⚡</span><span class="token-count" id="hdr-tokens">42</span><span class="token-label">crédits</span>
     </div>
     <button class="btn-recharge" onclick="openSettings('facturation')">+ Recharger</button>
     <div style="position:relative">
@@ -648,31 +658,80 @@ body.resultats-masques .btn-show-right{display:flex}
       <div class="sidebar-scroll">
         <div class="sidebar-section">
           <div class="sidebar-label">Outils rapides</div>
-          <div class="tool-item active" id="tool-general" onclick="selectTool('general','💬','Conversation générale')">
-            <span class="tool-icon">💬</span> Conversation générale
+
+          <div class="tool-accordion open" id="acc-general">
+            <div class="tool-accordion-head" onclick="toggleAccordion('general')">💬 Général &amp; Documents <span class="tool-accordion-chevron">▸</span></div>
+            <div class="tool-accordion-body">
+              <div class="tool-item active" id="tool-general" onclick="selectTool('general','💬','Conversation générale')">
+                <span class="tool-icon">💬</span> Conversation générale
+              </div>
+              <div class="tool-item" id="tool-analyse" onclick="selectTool('analyse','📄','Analyseur de fichiers')">
+                <span class="tool-icon">📄</span> Analyseur de fichiers
+              </div>
+              <div class="tool-item" id="tool-recherche" onclick="selectTool('recherche','🔍','Recherche documentaire')">
+                <span class="tool-icon">🔍</span> Recherche documentaire
+              </div>
+              <div class="tool-item" id="tool-navigation" onclick="selectTool('navigation','🌐','Navigation Web')">
+                <span class="tool-icon">🌐</span> Navigation web
+              </div>
+              <div class="tool-item" id="tool-sheet" onclick="selectTool('sheet','📋','Compléter un tableau')">
+                <span class="tool-icon">📋</span> Compléter un tableau
+              </div>
+              <div class="tool-item" id="tool-presentation" onclick="selectTool('presentation','📊','Créer une présentation')">
+                <span class="tool-icon">📊</span> Créer une présentation
+              </div>
+              <div class="tool-item" id="tool-documents" onclick="selectTool('documents','📚','Base documentaire')">
+                <span class="tool-icon">📚</span> Base documentaire
+              </div>
+            </div>
           </div>
-          <div class="tool-item" id="tool-analyse" onclick="selectTool('analyse','📄','Analyseur de fichiers')">
-            <span class="tool-icon">📄</span> Analyseur de fichiers
+
+          <div class="tool-accordion" id="acc-studio">
+            <div class="tool-accordion-head" onclick="toggleAccordion('studio')">🎨 Studio Média &amp; Création <span class="tool-accordion-chevron">▸</span></div>
+            <div class="tool-accordion-body">
+              <div class="tool-item" id="tool-studio-image" onclick="selectTool('studio-image','🎨','Générer une image')">
+                <span class="tool-icon">🎨</span> Générer une image
+              </div>
+              <div class="tool-item" id="tool-studio-voix" onclick="selectTool('studio-voix','🎙️','Générer une voix off')">
+                <span class="tool-icon">🎙️</span> Générer une voix off
+              </div>
+              <div class="tool-item" id="tool-media" onclick="selectTool('media','🎞️','Médiathèque libre de droits')">
+                <span class="tool-icon">🎞️</span> Photos/vidéos/sons libres de droits
+              </div>
+              <div class="tool-item" id="tool-canva" onclick="selectTool('canva','🖌️','Connexion Canva')">
+                <span class="tool-icon">🖌️</span> Créer/exporter un visuel Canva
+              </div>
+              <div class="tool-item soon" onclick="outilBientotDisponible('Retouche photo studio')">
+                <span class="tool-icon">📸</span> Retouche photo studio <span class="tool-soon-badge">Bientôt</span>
+              </div>
+              <div class="tool-item soon" onclick="outilBientotDisponible('Génération et montage vidéo IA')">
+                <span class="tool-icon">🎬</span> Génération &amp; montage vidéo IA <span class="tool-soon-badge">Bientôt</span>
+              </div>
+              <div class="tool-item soon" onclick="outilBientotDisponible('Changement de décor et arrière-plans')">
+                <span class="tool-icon">🖼️</span> Changement de décor <span class="tool-soon-badge">Bientôt</span>
+              </div>
+            </div>
           </div>
-          <div class="tool-item" id="tool-presentation" onclick="selectTool('presentation','📊','Créer une présentation')">
-            <span class="tool-icon">📊</span> Créer une présentation
-          </div>
-          <div id="tools-extra" style="display:none">
-          <div class="tool-item" id="tool-recherche" onclick="selectTool('recherche','🔍','Recherche documentaire')">
-            <span class="tool-icon">🔍</span> Recherche documentaire
-          </div>
-          <div class="tool-item" id="tool-sheet" onclick="selectTool('sheet','📋','Compléter un tableau')">
-            <span class="tool-icon">📋</span> Compléter un tableau
-          </div>
-          <div class="tool-item" id="tool-documents" onclick="selectTool('documents','📚','Base documentaire')">
-            <span class="tool-icon">📚</span> Base documentaire
-          </div>
-          <div class="tool-item" id="tool-navigation" onclick="selectTool('navigation','🌐','Navigation Web')">
-            <span class="tool-icon">🌐</span> Navigation Web
-          </div>
-          </div>
-          <div class="tool-item" id="tools-toggle" onclick="toggleMoreTools()" style="color:var(--gold);font-size:12px">
-            <span class="tool-icon">▾</span> <span id="tools-toggle-label">Voir plus</span>
+
+          <div class="tool-accordion" id="acc-concepteur">
+            <div class="tool-accordion-head" onclick="toggleAccordion('concepteur')">⚡ Concepteur : Web &amp; Automatisation <span class="tool-accordion-chevron">▸</span></div>
+            <div class="tool-accordion-body">
+              <div class="tool-item" id="tool-webdev" onclick="selectTool('webdev','🚀','Déployer un site web')">
+                <span class="tool-icon">🚀</span> Déployer un site web
+              </div>
+              <div class="tool-item soon" onclick="outilBientotDisponible('Bac à sable de code sécurisé (Docker/E2B)')">
+                <span class="tool-icon">💻</span> Bac à sable de code <span class="tool-soon-badge">Bientôt</span>
+              </div>
+              <div class="tool-item soon" onclick="outilBientotDisponible('Analyseur et formateur de bases de données')">
+                <span class="tool-icon">🗄️</span> Bases de données <span class="tool-soon-badge">Bientôt</span>
+              </div>
+              <div class="tool-item soon" onclick="outilBientotDisponible('Créateur d\'agents et automatisations n8n')">
+                <span class="tool-icon">🛠️</span> Créer un nouvel agent <span class="tool-soon-badge">Bientôt</span>
+              </div>
+              <div class="tool-item soon" onclick="outilBientotDisponible('Gestion des routines et webhooks actifs')">
+                <span class="tool-icon">🔄</span> Mes routines &amp; webhooks <span class="tool-soon-badge">Bientôt</span>
+              </div>
+            </div>
           </div>
         </div>
         <div class="sidebar-divider"></div>
@@ -1340,7 +1399,12 @@ const toolConfig = {
   recherche:    { icon:'🔍', label:'Recherche documentaire', welcome:'Mode **Recherche** activé. Posez votre question et je cherche dans vos documents.', chips:['🔍 Recherche libre','📁 Chercher dans Drive','📝 Résumer'], chipTexts:['Recherche des informations sur la gestion de projet agile','Cherche dans mon Drive les documents sur les fournisseurs','Résume les points clés de ce document'] },
   sheet:        { icon:'📋', label:'Tableaux Google Sheets', welcome:'Mode **Tableau** activé. Décrivez les données à intégrer dans votre Google Sheet.', chips:['📋 Remplir un tableau','📈 Créer des formules','📊 Analyser des données'], chipTexts:['Remplis mon tableau avec ces données','Crée des formules pour calculer les totaux automatiquement','Analyse les données de ce tableau et dis-moi ce que tu vois'] },
   documents:    { icon:'📚', label:'Base documentaire', welcome:'Mode **Base documentaire** activé. Ajoutez vos fichiers dans le panneau de droite, puis posez des questions sur leur contenu.', chips:['📄 Que contient ma base ?','🔍 Chercher une info','📋 Résumer un doc'], chipTexts:['Que contient ma base documentaire ?','Recherche des informations sur les tarifs','Résume le document le plus récent'] },
-  navigation:   { icon:'🌐', label:'Navigation Web', welcome:'Mode **Navigation Web** activé. Dites-moi quel site visiter et ce qu\'il faut y faire (cliquer, remplir un formulaire, extraire une information, capture d\'écran). Chaque action consomme des jetons.', chips:['🌐 Visiter un site','📝 Remplir un formulaire','🔍 Extraire une info'], chipTexts:['Va sur ce site et dis-moi ce qu\'il propose','Remplis ce formulaire en ligne avec mes informations','Extrait cette information de cette page web'] }
+  navigation:   { icon:'🌐', label:'Navigation Web', welcome:'Mode **Navigation Web** activé. Dites-moi quel site visiter et ce qu\'il faut y faire (cliquer, remplir un formulaire, extraire une information, capture d\'écran). Chaque action consomme des jetons.', chips:['🌐 Visiter un site','📝 Remplir un formulaire','🔍 Extraire une info'], chipTexts:['Va sur ce site et dis-moi ce qu\'il propose','Remplis ce formulaire en ligne avec mes informations','Extrait cette information de cette page web'] },
+  'studio-image': { icon:'🎨', label:'Générer une image', welcome:'Mode **Studio Visuel** activé. Décrivez l\'image à générer (style photoréaliste ou illustration). Réservé au mode Vision Avancée.', chips:['🌅 Photo de produit','🏢 Illustration business','🎨 Style libre'], chipTexts:['Génère une photo de produit sur fond neutre pour ma boutique','Génère une illustration professionnelle pour mon activité','Génère une image de : '] },
+  'studio-voix':  { icon:'🎙️', label:'Générer une voix off', welcome:'Mode **Voix off** activé. Collez le texte à lire, je génère la piste audio. Réservé au mode Vision Avancée.', chips:['🎙️ Voix off pub','📢 Message vocal','🗣️ Narration'], chipTexts:['Génère une voix off pour cette publicité : ','Génère un message vocal pour mes clients : ','Génère une narration pour ma présentation : '] },
+  media:        { icon:'🎞️', label:'Médiathèque libre de droits', welcome:'Mode **Médiathèque** activé, gratuit. Décrivez la photo, la vidéo ou le son que vous cherchez (Pexels, Freesound).', chips:['🖼️ Chercher une photo','🎬 Chercher une vidéo','🎵 Chercher un son'], chipTexts:['Cherche-moi une photo libre de droits de : ','Cherche-moi une vidéo libre de droits de : ','Cherche-moi un son libre de droits de : '] },
+  canva:        { icon:'🖌️', label:'Connexion Canva', welcome:'Mode **Canva** activé. Connectez votre compte dans Paramètres → Connecteurs si ce n\'est pas déjà fait. Réservé au mode Vision Avancée.', chips:['📤 Exporter un design','🎨 Voir mes modèles'], chipTexts:['Exporte mon design Canva en PDF','Quels modèles de marque as-tu sur mon compte Canva ?'] },
+  webdev:       { icon:'🚀', label:'Déployer un site web', welcome:'Mode **WebDev Deploy** activé. Décrivez le site à créer, je génère le code puis le dépose sur GitHub et le déploie en ligne. Réservé au mode Vision Avancée.', chips:['🌐 Landing page','🛍️ Page produit','📇 Page vitrine'], chipTexts:['Crée et déploie une landing page pour mon activité de : ','Crée et déploie une page produit pour : ','Crée et déploie une page vitrine pour mon entreprise'] }
 };
 
 /* ═══ SESSIONS ══════════════════════════════════════════════════════ */
@@ -1524,22 +1588,25 @@ function fmtDate(ts) {
 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 /* ═══ TOOLS / WELCOME ═══════════════════════════════════════════════ */
-function toggleMoreTools(force) {
-  const box = document.getElementById('tools-extra');
-  const lbl = document.getElementById('tools-toggle-label');
-  const tog = document.getElementById('tools-toggle');
-  if (!box) return;
-  const open = force === undefined ? box.style.display === 'none' : !!force;
-  box.style.display = open ? '' : 'none';
-  if (lbl) lbl.textContent = open ? 'Voir moins' : 'Voir plus';
-  if (tog) tog.querySelector('.tool-icon').textContent = open ? '\u25b4' : '\u25be';
-  DB.savePref('toolsExpanded', open);
+function toggleAccordion(name, force) {
+  const acc = document.getElementById('acc-' + name);
+  if (!acc) return;
+  const open = force === undefined ? !acc.classList.contains('open') : !!force;
+  acc.classList.toggle('open', open);
+  savePref('accordionOpen_' + name, open);
+}
+function ouvrirAccordionDeOutil(tool) {
+  const el = document.getElementById('tool-' + tool);
+  const acc = el && el.closest('.tool-accordion');
+  if (acc) acc.classList.add('open');
+}
+function outilBientotDisponible(nom) {
+  showAppToast(`\u26a0\ufe0f **${nom}**\n\nCe module arrive bient\u00f4t. Contactez l'\u00e9quipe EMDC Consulting si vous en avez besoin d\u00e8s maintenant.`);
 }
 
 function selectTool(tool, icon, label) {
-  // Si l'outil choisi est dans la partie repliee, on la deplie.
-  const el0 = document.getElementById('tool-' + tool);
-  if (el0 && el0.closest('#tools-extra')) toggleMoreTools(true);
+  // Si l'outil choisi est dans un accordeon replie, on le deplie.
+  ouvrirAccordionDeOutil(tool);
   S.currentTool = tool;
   document.querySelectorAll('.tool-item').forEach(el => el.classList.remove('active'));
   const el = document.getElementById('tool-' + tool);
@@ -1781,13 +1848,13 @@ function refletOutils(etapes) {
   passes.forEach(id => { if (!actifs.includes(id)) marquer(id, 'agent-passe'); });
   actifs.forEach(id => marquer(id, 'agent-actif'));
 
-  // Quatre outils vivent dans la partie repliee du menu : inutile d'allumer
-  // une ligne que le client ne voit pas. On deplie si besoin.
-  const extra = document.getElementById('tools-extra');
-  if (extra && extra.style.display === 'none'
-      && actifs.some(id => { const el = document.getElementById(id); return el && extra.contains(el); })) {
-    toggleMoreTools(true);
-  }
+  // Certains outils vivent dans un accordeon replie : inutile d'allumer une
+  // ligne que le client ne voit pas. On deplie l'accordeon concerne si besoin.
+  actifs.forEach(id => {
+    const el = document.getElementById(id);
+    const acc = el && el.closest('.tool-accordion');
+    if (acc && !acc.classList.contains('open')) acc.classList.add('open');
+  });
 }
 
 // L'agent raconte son travail au fur et a mesure : chaque etape s'affiche
@@ -2285,6 +2352,12 @@ async function sendMessage() {
 
   if (isVision && S.tokens <= 0) { showTokenModal(); return; }
 
+  // Verification du solde avant meme d'envoyer, selon l'outil selectionne
+  // dans le menu (cout connu et deterministe) : evite au client de perdre
+  // du temps sur une action qu'il ne peut de toute facon pas se permettre.
+  const coutPrevu = coutActionCourante();
+  if (coutPrevu > 0 && S.tokens < coutPrevu) { showTokenModal(coutPrevu); return; }
+
   // First message → create session in history
   const isFirst = !S.currentSessionId;
   if (isFirst) {
@@ -2641,8 +2714,27 @@ function updateTokenUI() {
   const el=document.getElementById('s-token-big'); if(el)el.textContent=t;
   document.getElementById('token-bar').style.width=Math.max(0,Math.min(100,t/peak*100))+'%';
 }
-function showTokenModal() { document.getElementById('modal-tokens').classList.add('open'); }
+function showTokenModal(coutRequis) {
+  const desc = document.querySelector('#modal-tokens .modal-desc');
+  if (desc) {
+    desc.textContent = (coutRequis != null)
+      ? `Cette action nécessite ${coutRequis} crédit${coutRequis > 1 ? 's' : ''}. Votre solde actuel est de ${S.tokens} crédit${S.tokens > 1 ? 's' : ''}. Veuillez recharger votre compte pour lancer cette action.`
+      : "Le chat reste disponible gratuitement. Pour analyser des documents, rechargez votre solde de jetons Vision.";
+  }
+  document.getElementById('modal-tokens').classList.add('open');
+}
 function closeTokenModal() { document.getElementById('modal-tokens').classList.remove('open'); }
+
+/* ═══ VERIFICATION DU SOLDE AVANT ENVOI ("Pre-Flight Credit Check") ════
+   Couts reels connus par outil selectionne dans le menu lateral. Les
+   nouveaux outils (studio, webdev, canva) partagent le meme cout que le
+   mode Vision Avancee (1 jeton) : c'est la garde reellement en place
+   cote serveur aujourd'hui, on n'invente pas de tarif different. */
+const TOOL_COSTS = { navigation: 3, analyse: 5, 'studio-image': 1, 'studio-voix': 1, webdev: 1, canva: 1 };
+function coutActionCourante() {
+  if (S.mode === 'vision') return Math.max(1, TOOL_COSTS[S.currentTool] || 1);
+  return TOOL_COSTS[S.currentTool] || 0; // 0 si l'outil courant est gratuit hors mode Vision
+}
 
 /* ═══ SETTINGS ══════════════════════════════════════════════════════ */
 function openSettings(tab='general') {
@@ -4208,7 +4300,8 @@ document.addEventListener('click', e=>{
 // Init
 window.addEventListener('DOMContentLoaded', ()=>{
   document.querySelectorAll('.logo-slot').forEach(el => el.src = LOGO);
-  toggleMoreTools(!!DB.prefs().toolsExpanded);
+  ['general','studio','concepteur'].forEach(n => toggleAccordion(n, !!DB.prefs()['accordionOpen_' + n]));
+  document.getElementById('acc-general').classList.add('open'); // toujours visible au premier chargement
   // Coller une image n'importe ou dans l'app (pas seulement dans la zone d'ecriture)
   document.addEventListener('paste', (e) => {
     if (e.defaultPrevented) return;
