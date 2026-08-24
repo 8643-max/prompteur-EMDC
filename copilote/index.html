@@ -2391,6 +2391,16 @@ function lienCliquable(html) {
   const garder = h => { jetons.push(h); return '\u0000' + (jetons.length - 1) + '\u0000'; };
   let out = String(html || '');
 
+  // 0) Images markdown ![alt](url) : affichees directement (vignette + bouton
+  //    telechargement), meme si l'URL n'a pas d'extension .png/.jpg (images
+  //    generees, hebergees sur un stockage signe sans extension).
+  out = out.replace(/!\[([^\]\n]*)\]\((https?:\/\/[^\s)]+)\)/g, (m, alt, u) =>
+    garder('<span class="media-result-block">'
+      + '<a href="' + u + '" target="_blank" rel="noopener">'
+      + '<img src="' + u + '" alt="' + (alt || 'Image générée') + '" class="capture-vignette" loading="lazy"></a>'
+      + '<a href="' + u + '" download target="_blank" rel="noopener" class="media-download-btn">⬇ Télécharger l\'image</a>'
+      + '</span>'));
+
   // 1) Liens markdown [libelle](url) : le libelle reste lisible, l'URL passe en href.
   out = out.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, libelle, u) =>
     garder('<a href="' + u + '" target="_blank" rel="noopener" style="color:var(--gold)">' + libelle + '</a>'));
