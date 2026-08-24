@@ -180,6 +180,9 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 .avertissement-ia{text-align:center;font-size:11px;line-height:1.5;color:var(--text-muted);opacity:.75;padding:7px 12px 2px}
 .capture-vignette{display:block;max-width:220px;width:100%;margin:6px 0;border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
 .capture-vignette:hover{border-color:var(--gold-muted)}
+.media-result-block{display:inline-block;max-width:100%}
+.media-download-btn{display:inline-block;font-size:11px;font-weight:600;color:var(--gold);text-decoration:none;padding:3px 0;border:none}
+.media-download-btn:hover{text-decoration:underline}
 .typing-dot{width:7px;height:7px;border-radius:50%;background:var(--gold-muted);animation:blink 1.2s ease-in-out infinite}
 .typing-dot:nth-child(2){animation-delay:.25s}
 .typing-dot:nth-child(3){animation-delay:.5s}
@@ -771,7 +774,7 @@ body.resultats-masques .btn-show-right{display:flex}
       <div class="input-bar">
         <div class="mode-switcher">
           <button class="mode-btn standard active" id="mode-standard" onclick="setMode('standard')"><span class="mode-dot"></span><span class="mode-label"> Mode Standard </span><span class="mode-cost">Gratuit</span></button>
-          <button class="mode-btn vision" id="mode-vision" onclick="setMode('vision')"><span class="mode-dot"></span><span class="mode-label"> ⚡ Vision Avancée </span><span class="mode-cost">1 jeton</span></button>
+          <button class="mode-btn vision" id="mode-vision" onclick="setMode('vision')"><span class="mode-dot"></span><span class="mode-label"> ⚡ Vision Avancée </span><span class="mode-cost" id="mode-vision-cost">1 crédit</span></button>
         </div>
         <div class="input-row">
           <!-- Bouton fichier : input transparent superposé, fiable sur iOS Safari -->
@@ -1608,6 +1611,7 @@ function selectTool(tool, icon, label) {
   // Si l'outil choisi est dans un accordeon replie, on le deplie.
   ouvrirAccordionDeOutil(tool);
   S.currentTool = tool;
+  majCoutAffiche();
   document.querySelectorAll('.tool-item').forEach(el => el.classList.remove('active'));
   const el = document.getElementById('tool-' + tool);
   if (el) el.classList.add('active');
@@ -2101,8 +2105,17 @@ function lienCliquable(html) {
   // 2) URLs nues restantes.
   out = out.replace(/(https?:\/\/[^\s<]+)/g, u => {
     if (/\.(jpe?g|png|webp|gif)(\?|$)/i.test(u)) {
-      return garder('<a href="' + u + '" target="_blank" rel="noopener">'
-        + '<img src="' + u + '" alt="capture" class="capture-vignette" loading="lazy"></a>');
+      return garder('<span class="media-result-block">'
+        + '<a href="' + u + '" target="_blank" rel="noopener">'
+        + '<img src="' + u + '" alt="Image générée" class="capture-vignette" loading="lazy"></a>'
+        + '<a href="' + u + '" download target="_blank" rel="noopener" class="media-download-btn">⬇ Télécharger HD</a>'
+        + '</span>');
+    }
+    if (/\.(mp3|wav|ogg|m4a|webm)(\?|$)/i.test(u)) {
+      return garder('<span class="media-result-block">'
+        + '<audio controls preload="none" src="' + u + '" style="width:100%;max-width:320px;display:block;margin:6px 0"></audio>'
+        + '<a href="' + u + '" download target="_blank" rel="noopener" class="media-download-btn">⬇ Télécharger l\'audio</a>'
+        + '</span>');
     }
     return garder('<a href="' + u + '" target="_blank" rel="noopener" style="color:var(--gold);word-break:break-all">' + u + '</a>');
   });
@@ -2534,6 +2547,15 @@ function setMode(m) {
   document.getElementById('mode-standard').classList.toggle('active', m==='standard');
   document.getElementById('mode-vision').classList.toggle('active', m==='vision');
   // Do NOT auto-open file zone — user must click 📎 themselves
+}
+
+// Le cout affiche sur le bouton Vision Avancee reflete l'outil selectionne
+// dans le menu (navigation web, analyse de fichier... ne coutent pas pareil).
+function majCoutAffiche() {
+  const el = document.getElementById('mode-vision-cost');
+  if (!el) return;
+  const c = Math.max(1, TOOL_COSTS[S.currentTool] || 1);
+  el.textContent = c + (c > 1 ? ' crédits' : ' crédit');
 }
 
 /* ═══ FILE UPLOAD ═══════════════════════════════════════════════════ */
