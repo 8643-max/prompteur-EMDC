@@ -1161,8 +1161,8 @@ body.resultats-masques .btn-show-right{display:flex}
       <div class="sgroup">
         <div class="sgroup-title">Moteur de traitement</div>
         <div class="srow">
-          <div class="srow-left"><div class="srow-label">File d'attente (essai)</div><div class="srow-desc">Découpe la demande en sous-tâches traitées une par une. Réservé à EMDC : les clients gardent le moteur habituel.</div></div>
-          <label class="toggle"><input type="checkbox" id="s-file-attente" onchange="savePref('fileAttente',this.checked)"><span class="toggle-slider"></span></label>
+          <div class="srow-left"><div class="srow-label">Moteur simplifié (secours EMDC)</div><div class="srow-desc">Par défaut, l'agent découpe la demande, propose un plan et l'exécute étape par étape. Cochez pour revenir au mono-agent d'origine (tests EMDC).</div></div>
+          <label class="toggle"><input type="checkbox" id="s-moteur-simple" onchange="savePref('moteurSimple',this.checked)"><span class="toggle-slider"></span></label>
         </div>
       </div>
       <div class="sgroup">
@@ -2202,6 +2202,10 @@ async function suivreJobN8n(jobId, userId, taskSid, ctrl, brut) {
       if (j.etapes.length > vues) { vues = j.etapes.length; updateSteps(taskSid, j.etapes); }
     }
     if (j.statut === 'termine') { annoncerFinMission(j.resultat); return brut ? { statut: 'termine', resultat: j.resultat || null } : (j.resultat || null); }
+    // Plan propose en attente de validation : l'agent a decoupe la demande et
+    // presente son plan. On l'affiche comme une reponse normale et on arrete
+    // d'attendre -- le prochain message du client (oui / precisions) relance.
+    if (j.statut === 'attente_validation') { annoncerFinMission(j.resultat); return brut ? { statut: 'termine', resultat: j.resultat || null } : (j.resultat || null); }
     if (j.statut === 'annule') throw stop();
     if (j.statut === 'erreur') {
       // Le serveur compose un compte rendu du travail deja fait : on le
@@ -2280,7 +2284,7 @@ async function suivreJobSupabase(jobId, userId, taskSid, ctrl, brut) {
         _etapesParSession.set(taskSid, j.etapes);
         if (j.etapes.length > vues) { vues = j.etapes.length; updateSteps(taskSid, j.etapes); }
       }
-      if (j.statut === 'termine') {
+      if (j.statut === 'termine' || j.statut === 'attente_validation') {
         annoncerFinMission(j.resultat);
         return rendre(brut ? { statut: 'termine', resultat: j.resultat || null } : (j.resultat || null));
       }
@@ -3661,7 +3665,7 @@ function initVocal() {
   const l = document.getElementById('s-lecture'); if (l) l.checked = !!p.lectureVoix;
   const e = document.getElementById('s-etapes-voix'); if (e) e.checked = !!p.etapesVoix;
   const nt = document.getElementById('s-notifs'); if (nt) nt.checked = !!p.notifsMission && typeof Notification !== 'undefined' && Notification.permission === 'granted';
-  const fa = document.getElementById('s-file-attente'); if (fa) fa.checked = !!p.fileAttente;
+  const fa = document.getElementById('s-moteur-simple'); if (fa) fa.checked = !!p.moteurSimple;
   // Les voix arrivent de facon asynchrone : on recharge la liste des qu elle change.
   if (lectureDisponible()) {
     chargerVoix();
@@ -4475,7 +4479,10 @@ const ASYNC_CHAT_URL = 'https://n8n.emdcconsulting.com/webhook/saas/chat-async';
 // une par une. Les deux repondent un job_id et se suivent avec le meme saas/async/status,
 // donc basculer de l un a l autre ne change rien au reste de l application.
 const ASYNC_FILE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/chat-queue';
-function urlDuMoteur() { return DB.prefs().fileAttente ? ASYNC_FILE_URL : ASYNC_CHAT_URL; }
+// Moteur a deux niveaux (Agent Client qui cadre + Orchestrateur qui execute,
+// avec decoupage en sous-taches, validation de plan et checklist) par defaut.
+// Le moteur simplifie (mono-agent) reste dispo en secours via un reglage EMDC.
+function urlDuMoteur() { return DB.prefs().moteurSimple ? ASYNC_CHAT_URL : ASYNC_FILE_URL; }
 const ASYNC_STATUS_URL = 'https://n8n.emdcconsulting.com/webhook/saas/async/status';
 const ASYNC_ANALYSE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/analyse-async';
 let _docsSelectedFile = null;
