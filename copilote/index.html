@@ -437,6 +437,27 @@ body.resultats-masques .btn-show-right{display:flex}
 .feature-admin-form{border:1px dashed var(--border-strong);border-radius:12px;padding:14px;margin-top:14px}
 .feature-admin-form input,.feature-admin-form textarea{width:100%;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:8px 10px;font-size:13px;margin-bottom:8px;font-family:inherit}
 .feature-admin-form textarea{min-height:70px;resize:vertical}
+.studio-view{max-width:820px;width:100%;margin:0 auto;padding:32px 20px}
+.studio-view-header{text-align:center;margin-bottom:22px}
+.studio-view-title{font-family:Georgia,serif;font-size:24px;font-weight:bold;color:var(--gold)}
+.studio-view-sub{font-size:13px;color:var(--text-secondary);margin-top:8px}
+.studio-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px}
+.studio-card{border:1px solid var(--border);border-radius:14px;padding:18px 16px;cursor:pointer;transition:border-color .15s,transform .1s;background:var(--bg-elevated)}
+.studio-card:hover{border-color:var(--gold-muted);transform:translateY(-2px)}
+.studio-card.active{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset}
+.studio-card-icon{font-size:26px;margin-bottom:10px}
+.studio-card-title{font-size:14px;font-weight:700;margin-bottom:4px}
+.studio-card-desc{font-size:11.5px;color:var(--text-secondary);line-height:1.5}
+.studio-card-badge{display:inline-block;margin-top:8px;font-size:9.5px;padding:2px 7px;border-radius:6px;background:var(--gold-dim);color:var(--gold);font-weight:700;letter-spacing:.03em}
+.studio-form-zone{margin-top:20px}
+.studio-form{border:1px solid var(--border-strong);border-radius:14px;padding:20px;background:var(--bg-surface)}
+.studio-form-title{font-weight:700;font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.studio-form label{display:block;font-size:12px;color:var(--text-secondary);margin-bottom:5px;margin-top:12px}
+.studio-form label:first-of-type{margin-top:0}
+.studio-form input[type="text"],.studio-form textarea,.studio-form select{width:100%;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:9px 12px;font-size:13px;font-family:inherit}
+.studio-form textarea{min-height:90px;resize:vertical}
+.studio-form-submit{margin-top:16px;width:100%;padding:12px;background:linear-gradient(135deg,var(--gold-muted),var(--gold),var(--gold-light));color:var(--on-accent);font-weight:700;font-size:14px;border:none;border-radius:var(--radius);cursor:pointer}
+.studio-form-submit:hover{opacity:.9}
 .btn-modal-primary{padding:12px 20px;background:linear-gradient(135deg,var(--gold-muted),var(--gold),var(--gold-light));color:var(--on-accent);font-weight:700;font-size:14px;border:none;border-radius:var(--radius);cursor:pointer;transition:opacity .2s}
 .btn-modal-primary:hover{opacity:.88}
 .btn-modal-secondary{padding:10px 20px;background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-size:13px;border-radius:var(--radius);cursor:pointer;transition:background .15s}
@@ -761,6 +782,14 @@ body.resultats-masques .btn-show-right{display:flex}
             <div class="chip" onclick="useChip('Quel est mon solde de jetons ?')">⚡ Mon solde</div>
             <div class="chip" onclick="useChip('Comment fonctionne EMDC Copilote ?')">ℹ️ En savoir plus</div>
           </div>
+        </div>
+        <div class="studio-view" id="studio-view" style="display:none">
+          <div class="studio-view-header">
+            <div class="studio-view-title" id="studio-view-title">🎨 Studio Média &amp; Création</div>
+            <div class="studio-view-sub">Choisissez une action ci-dessous. Tout ce qui est marqué « Vision Avancée » consomme des crédits.</div>
+          </div>
+          <div class="studio-cards" id="studio-cards"></div>
+          <div class="studio-form-zone" id="studio-form-zone"></div>
         </div>
       </div>
       <div class="upload-zone" id="upload-zone" onclick="triggerFileInput()" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragleave="onDragLeave(event)">
@@ -1612,6 +1641,7 @@ function selectTool(tool, icon, label) {
   ouvrirAccordionDeOutil(tool);
   S.currentTool = tool;
   majCoutAffiche();
+  afficherStudioView();
   document.querySelectorAll('.tool-item').forEach(el => el.classList.remove('active'));
   const el = document.getElementById('tool-' + tool);
   if (el) el.classList.add('active');
@@ -1654,7 +1684,167 @@ function selectTool(tool, icon, label) {
 }
 
 /* ═══ MESSAGES ══════════════════════════════════════════════════════ */
-function hideWelcome() { const w = document.getElementById('welcome-center'); if (w) w.style.display = 'none'; }
+function hideWelcome() {
+  const w = document.getElementById('welcome-center'); if (w) w.style.display = 'none';
+  const sv = document.getElementById('studio-view'); if (sv) sv.style.display = 'none';
+}
+
+/* ═══ INTERFACE DEDIEE : STUDIO MEDIA & CREATION ═══════════════════════
+   Chaque outil garde son interface propre (formulaire adapte a ce qu'il
+   attend reellement), plutot qu'un chat generique pour tout. La demande
+   construite est ensuite envoyee par le meme circuit deja teste (chat,
+   credits, streaming, resultats) -- rien de simule, tout appelle les
+   vrais outils (studio_visuel_voix, media_sourcing, canva_connect). */
+const STUDIO_CARDS = [
+  { id: 'studio-image', icon: '🎨', titre: 'Image IA', desc: "Génère une image à partir d'une description.", badge: 'Vision Avancée' },
+  { id: 'studio-voix', icon: '🎙️', titre: 'Voix off IA', desc: 'Transforme un texte en voix off.', badge: 'Vision Avancée' },
+  { id: 'media', icon: '🎞️', titre: 'Médiathèque', desc: 'Photos, vidéos, sons libres de droits.', badge: 'Gratuit' },
+  { id: 'canva', icon: '🖌️', titre: 'Canva', desc: 'Créer ou exporter un visuel Canva.', badge: 'Vision Avancée' },
+];
+
+function estOutilStudio(tool) { return STUDIO_CARDS.some(c => c.id === tool); }
+
+function afficherStudioView() {
+  const sv = document.getElementById('studio-view');
+  const wc = document.getElementById('welcome-center');
+  if (!sv) return;
+  if (S.currentSessionId) { sv.style.display = 'none'; return; }
+  const estStudio = estOutilStudio(S.currentTool);
+  sv.style.display = estStudio ? '' : 'none';
+  if (wc) wc.style.display = estStudio ? 'none' : '';
+  if (estStudio) {
+    renderStudioCards();
+    afficherFormulaireStudio(S.currentTool);
+  }
+}
+
+function renderStudioCards() {
+  const box = document.getElementById('studio-cards');
+  if (!box) return;
+  box.innerHTML = STUDIO_CARDS.map(c => `
+    <div class="studio-card ${c.id === S.currentTool ? 'active' : ''}" id="scard-${c.id}" onclick="selectTool('${c.id}','${c.icon}','${c.titre}')">
+      <div class="studio-card-icon">${c.icon}</div>
+      <div class="studio-card-title">${escapeHtml(c.titre)}</div>
+      <div class="studio-card-desc">${escapeHtml(c.desc)}</div>
+      <div class="studio-card-badge">${escapeHtml(c.badge)}</div>
+    </div>
+  `).join('');
+}
+
+const STUDIO_FORMS = {
+  'studio-image': () => `
+    <div class="studio-form">
+      <div class="studio-form-title">🎨 Générer une image</div>
+      <label>Décrivez l'image souhaitée</label>
+      <textarea id="sf-image-prompt" placeholder="Ex : photo de produit sur fond neutre, style minimaliste et professionnel"></textarea>
+      <button class="studio-form-submit" onclick="lancerStudioImage()">⚡ Générer l'image (Vision Avancée)</button>
+    </div>`,
+  'studio-voix': () => `
+    <div class="studio-form">
+      <div class="studio-form-title">🎙️ Générer une voix off</div>
+      <label>Texte à lire</label>
+      <textarea id="sf-voix-texte" placeholder="Collez ici le texte que la voix off doit lire"></textarea>
+      <label>Voix (optionnel)</label>
+      <input type="text" id="sf-voix-id" placeholder="Laissez vide pour la voix par défaut">
+      <button class="studio-form-submit" onclick="lancerStudioVoix()">⚡ Générer la voix off (Vision Avancée)</button>
+    </div>`,
+  media: () => `
+    <div class="studio-form">
+      <div class="studio-form-title">🎞️ Chercher un média libre de droits</div>
+      <label>Type</label>
+      <select id="sf-media-type">
+        <option value="image">Photo</option>
+        <option value="video">Vidéo</option>
+        <option value="musique">Son / musique</option>
+      </select>
+      <label>Ce que vous cherchez</label>
+      <input type="text" id="sf-media-requete" placeholder="Ex : plage au coucher de soleil (en anglais pour de meilleurs résultats)">
+      <button class="studio-form-submit" onclick="lancerStudioMedia()">🔍 Chercher (gratuit)</button>
+    </div>`,
+  canva: () => `
+    <div class="studio-form">
+      <div class="studio-form-title">🖌️ Canva Connect</div>
+      <label>Action</label>
+      <select id="sf-canva-action" onchange="majFormulaireCanva()">
+        <option value="export">Exporter un design existant</option>
+        <option value="dataset">Vérifier les champs d'un modèle de marque (Enterprise)</option>
+        <option value="autofill">Générer depuis un modèle de marque (Enterprise)</option>
+      </select>
+      <div id="sf-canva-champs"></div>
+      <button class="studio-form-submit" onclick="lancerStudioCanva()">⚡ Lancer (Vision Avancée)</button>
+    </div>`,
+};
+
+function afficherFormulaireStudio(tool) {
+  document.querySelectorAll('.studio-card').forEach(el => el.classList.remove('active'));
+  const active = document.getElementById('scard-' + tool);
+  if (active) active.classList.add('active');
+  const zone = document.getElementById('studio-form-zone');
+  if (!zone) return;
+  zone.innerHTML = STUDIO_FORMS[tool] ? STUDIO_FORMS[tool]() : '';
+  if (tool === 'canva') majFormulaireCanva();
+}
+
+function majFormulaireCanva() {
+  const action = document.getElementById('sf-canva-action')?.value;
+  const champs = document.getElementById('sf-canva-champs');
+  if (!champs) return;
+  if (action === 'export') {
+    champs.innerHTML = `<label>Identifiant du design</label><input type="text" id="sf-canva-design-id" placeholder="Fourni par Canva (ex : DAxxxxxxx)">
+      <label>Format</label><select id="sf-canva-format"><option value="pdf">PDF</option><option value="png">PNG</option><option value="jpg">JPG</option></select>`;
+  } else {
+    champs.innerHTML = `<label>Identifiant du modèle de marque</label><input type="text" id="sf-canva-template-id" placeholder="Fourni par Canva">
+      ${action === 'autofill' ? `<label>Données à injecter (JSON)</label><textarea id="sf-canva-data" placeholder='{"CITY":{"type":"text","text":"Paris"}}'></textarea>` : ''}`;
+  }
+}
+
+// Envoie un message construit par le formulaire, via le circuit deja teste
+// (credits, streaming, resultats), sans passer par une saisie libre.
+function envoyerDepuisStudio(texte, forcerVision) {
+  if (forcerVision && S.mode !== 'vision') setMode('vision');
+  const input = document.getElementById('chat-input');
+  if (!input) return;
+  input.value = texte;
+  autoResize(input);
+  sendMessage();
+}
+
+function lancerStudioImage() {
+  const p = document.getElementById('sf-image-prompt')?.value.trim();
+  if (!p) { showAppToast('⚠️ Décrivez l\'image à générer.'); return; }
+  envoyerDepuisStudio('Génère une image : ' + p, true);
+}
+function lancerStudioVoix() {
+  const t = document.getElementById('sf-voix-texte')?.value.trim();
+  if (!t) { showAppToast('⚠️ Collez le texte à lire.'); return; }
+  const voice = document.getElementById('sf-voix-id')?.value.trim();
+  envoyerDepuisStudio('Génère une voix off' + (voice ? (' avec la voix ' + voice) : '') + ' pour ce texte : ' + t, true);
+}
+function lancerStudioMedia() {
+  const type = document.getElementById('sf-media-type')?.value;
+  const req = document.getElementById('sf-media-requete')?.value.trim();
+  if (!req) { showAppToast('⚠️ Décrivez ce que vous cherchez.'); return; }
+  const libelle = type === 'video' ? 'une vidéo' : (type === 'musique' ? 'un son' : 'une photo');
+  envoyerDepuisStudio('Cherche-moi ' + libelle + ' libre de droits : ' + req, false);
+}
+function lancerStudioCanva() {
+  const action = document.getElementById('sf-canva-action')?.value;
+  if (action === 'export') {
+    const id = document.getElementById('sf-canva-design-id')?.value.trim();
+    const format = document.getElementById('sf-canva-format')?.value;
+    if (!id) { showAppToast('⚠️ Indiquez l\'identifiant du design à exporter.'); return; }
+    envoyerDepuisStudio('Exporte mon design Canva ' + id + ' en ' + format, true);
+  } else if (action === 'dataset') {
+    const id = document.getElementById('sf-canva-template-id')?.value.trim();
+    if (!id) { showAppToast('⚠️ Indiquez l\'identifiant du modèle de marque.'); return; }
+    envoyerDepuisStudio('Vérifie les champs à remplir du modèle de marque Canva ' + id, true);
+  } else {
+    const id = document.getElementById('sf-canva-template-id')?.value.trim();
+    const data = document.getElementById('sf-canva-data')?.value.trim();
+    if (!id || !data) { showAppToast('⚠️ Indiquez le modèle de marque et les données à injecter.'); return; }
+    envoyerDepuisStudio('Génère un design à partir du modèle de marque Canva ' + id + ' avec ces données : ' + data, true);
+  }
+}
 
 function addMsgUI(role, text, save = true) {
   hideWelcome();
@@ -3828,6 +4018,7 @@ function newSession() {
   document.getElementById('chat-title').textContent='Nouvelle session';
   removeFile(); setMode('standard');
   startNewSession(); renderHistory(); refreshBusyUI();
+  afficherStudioView();
 }
 
 /* ═══ MISC ACTIONS ══════════════════════════════════════════════════ */
