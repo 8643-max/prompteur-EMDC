@@ -2402,8 +2402,22 @@ function lienCliquable(html) {
       + '</span>'));
 
   // 1) Liens markdown [libelle](url) : le libelle reste lisible, l'URL passe en href.
-  out = out.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, libelle, u) =>
-    garder('<a href="' + u + '" target="_blank" rel="noopener" style="color:var(--gold)">' + libelle + '</a>'));
+  //    Si l'URL pointe vers un media (image ou audio), on l'affiche directement
+  //    au lieu d'un lien texte -- l'agent formate parfois une image/voix generee
+  //    comme un lien, mais le client doit la voir/l'ecouter dans le panneau.
+  out = out.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, libelle, u) => {
+    if (/\.(jpe?g|png|webp|gif)(\?|$)/i.test(u)) {
+      return garder('<span class="media-result-block">'
+        + '<a href="' + u + '" target="_blank" rel="noopener"><img src="' + u + '" alt="' + libelle + '" class="capture-vignette" loading="lazy"></a>'
+        + '<a href="' + u + '" download target="_blank" rel="noopener" class="media-download-btn">⬇ Télécharger l\'image</a></span>');
+    }
+    if (/\.(mp3|wav|ogg|m4a|webm)(\?|$)/i.test(u)) {
+      return garder('<span class="media-result-block">'
+        + '<audio controls preload="none" src="' + u + '" style="width:100%;max-width:320px;display:block;margin:6px 0"></audio>'
+        + '<a href="' + u + '" download target="_blank" rel="noopener" class="media-download-btn">⬇ Télécharger l\'audio</a></span>');
+    }
+    return garder('<a href="' + u + '" target="_blank" rel="noopener" style="color:var(--gold)">' + libelle + '</a>');
+  });
 
   // 2) URLs nues restantes.
   out = out.replace(/(https?:\/\/[^\s<]+)/g, u => {
