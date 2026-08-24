@@ -2589,6 +2589,74 @@ async function analyzeFileWithAgent(file, question, sessionId) {
   }
 }
 
+// Retouche d'une image jointe (detourage, agrandissement HD, retouche portrait,
+// re-eclairage). La photo part telle quelle vers saas/studio-async, qui l'heberge,
+// la traite cote serveur (Replicate) et renvoie l'image resultat -- affichee inline
+// dans la conversation via le meme cycle asynchrone que l'analyse.
+const RETOUCHE_LABELS = {
+  detourage: 'Détourage (fond retiré)',
+  upscale: 'Agrandissement HD',
+  retouche: 'Retouche du portrait',
+  reeclairage: 'Ré-éclairage',
+};
+async function retoucherImage(file, operation) {
+  if (!file) return;
+  if (!S.user && !S._guestMode) { openLoginModal('first_message'); return; }
+  const MAX = 8 * 1024 * 1024;
+  if (file.size > MAX) { showToast('Image trop volumineuse (8 Mo maximum).', 4000); return; }
+  if (S.tokens <= 0) { showTokenModal(); return; }
+  const lbl = RETOUCHE_LABELS[operation] || 'Retouche';
+
+  // Cree la session au besoin, comme un envoi normal.
+  const isFirst = !S.currentSessionId;
+  if (isFirst && S.pendingSession) commitSession(file.name || lbl);
+  addMsgUI('user', '🎨 **' + lbl + '** — ' + file.name);
+  if (isFirst) document.getElementById('chat-title').textContent = (file.name || lbl).slice(0, 40);
+  const taskSid = S.currentSessionId;
+  removeFile();
+  showTyping();
+
+  const b64 = await new Promise((resolve) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result).split(',')[1] || '');
+    fr.onerror = () => resolve('');
+    fr.readAsDataURL(file);
+  });
+  if (!b64) { removeTyping(); deliverToSession(taskSid, "Je n'ai pas pu lire cette image."); return; }
+
+  const uid = S.user?.id || S.user?.email || 'guest';
+  const ctrl = taskStart(taskSid, 'analyse');
+  try {
+    const r = await fetch(STUDIO_ASYNC_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: uid, email: S.user?.email || '',
+        session_id: taskSid || ('guest-' + Date.now().toString(36)),
+        operation, file_name: file.name, mime_type: file.type || 'image/png', image_base64: b64,
+      }),
+      signal: ctrl.signal,
+    });
+    if (!r.ok) { removeTyping(); deliverToSession(taskSid, "La retouche n'a pas pu démarrer. Réessayez dans un instant."); return; }
+    const data = await r.json().catch(() => null);
+    const jobId = data && data.job_id;
+    if (!jobId) { removeTyping(); deliverToSession(taskSid, "La retouche n'a pas pu démarrer. Réessayez dans un instant."); return; }
+    const t = taskOf(taskSid); if (t) { t.jobId = jobId; t.userId = uid; }
+    const sortie = await suivreJob(jobId, uid, taskSid, ctrl, true);
+    removeTyping();
+    if (!sortie) { deliverToSession(taskSid, "La retouche n'a pas abouti. Réessayez."); return; }
+    if (sortie.statut === 'erreur') { deliverToSession(taskSid, sortie.erreur || "La retouche a échoué."); return; }
+    deliverToSession(taskSid, sortie.resultat || 'Terminé.');
+    setTimeout(refreshSupaTokens, 800);
+  } catch (e) {
+    removeTyping();
+    const t = taskOf(taskSid); if (t && t.stoppedByUser) return;
+    if (e.name === 'AbortError') return;
+    deliverToSession(taskSid, "La retouche a échoué. Réessayez dans un instant.");
+  } finally {
+    taskEnd(taskSid);
+  }
+}
+
 /* ═══ AI RESPONSES (multilingues) ═══════════════════════════════════ */
 const RESPONSES = {
   fr: {
@@ -2995,6 +3063,33 @@ function rendreFichiers() {
     row.appendChild(ic); row.appendChild(mid); row.appendChild(rm);
     box.appendChild(row);
   });
+  // Une seule image jointe : on propose la retouche IA directement (detourage,
+  // agrandissement, retouche portrait, re-eclairage) -- un clic lance l'action.
+  if (n === 1) {
+    const f0 = S.pendingFiles[0];
+    const ext0 = (f0.name.split('.').pop() || '').toLowerCase();
+    const estImg0 = /^image\//.test(f0.type || '') || ['png', 'jpg', 'jpeg', 'webp'].includes(ext0);
+    if (estImg0) {
+      const bar = document.createElement('div');
+      bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;width:100%;margin-top:8px';
+      const ops = [['detourage', '✂️ Détourer'], ['upscale', '🔍 Agrandir HD'], ['retouche', '✨ Retoucher'], ['reeclairage', '💡 Rééclairer']];
+      ops.forEach(([op, label]) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = label;
+        b.style.cssText = 'padding:6px 11px;border-radius:8px;border:1px solid rgba(212,175,55,.45);background:rgba(212,175,55,.10);color:inherit;cursor:pointer;font-size:13px;font-weight:600';
+        b.onmouseover = () => b.style.background = 'rgba(212,175,55,.22)';
+        b.onmouseout = () => b.style.background = 'rgba(212,175,55,.10)';
+        b.onclick = () => retoucherImage(f0, op);
+        bar.appendChild(b);
+      });
+      const hint = document.createElement('div');
+      hint.style.cssText = 'width:100%;font-size:11px;opacity:.6;margin-top:4px';
+      hint.textContent = 'Retouche IA — 5 jetons par action. Ou tapez un message pour analyser l\'image.';
+      box.appendChild(bar);
+      box.appendChild(hint);
+    }
+  }
   if (n > 1) {
     const tot = document.createElement('div');
     tot.className = 'upload-preview-size';
@@ -4490,6 +4585,9 @@ const ASYNC_FILE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/chat-queue';
 function urlDuMoteur() { return DB.prefs().moteurSimple ? ASYNC_CHAT_URL : ASYNC_FILE_URL; }
 const ASYNC_STATUS_URL = 'https://n8n.emdcconsulting.com/webhook/saas/async/status';
 const ASYNC_ANALYSE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/analyse-async';
+// Retouche d'image (detourage, agrandissement, retouche portrait, re-eclairage) :
+// la photo joue le meme cycle asynchrone que l'analyse (job + suivi).
+const STUDIO_ASYNC_URL = 'https://n8n.emdcconsulting.com/webhook/saas/studio-async';
 let _docsSelectedFile = null;
 
 function docsDragOver(e) { e.preventDefault(); document.getElementById('docs-drop-zone').classList.add('drag-over'); }
