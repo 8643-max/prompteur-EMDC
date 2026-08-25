@@ -1756,6 +1756,8 @@ function selectTool(tool, icon, label) {
   newSession();
   // La retouche photo est une action payante : l'outil s'ouvre directement en mode Vision.
   if (tool === 'retouche') setMode('vision');
+  // Voix off : on affiche l'etat du clonage de voix (cloner / voix active / reset).
+  if (tool === 'studio-voix') setTimeout(chargerStatutVoix, 60);
   closeSidebar();
 }
 
@@ -2647,6 +2649,101 @@ async function retoucheViaAgent(file, instruction) {
 // Boutons rapides sous l'apercu : chaque bouton preremplit l'operation voulue.
 function retoucherImage(file, operation) {
   return retoucheViaAgent(file, RETOUCHE_VERBES[operation] || 'Retouche cette image');
+}
+
+/* ═══ CLONAGE DE VOIX (ElevenLabs) ══════════════════════════════════
+   Le client enregistre ou importe un court echantillon : n8n cree un clone
+   ElevenLabs et bascule sa voix off dessus. Un bouton permet de revenir a la
+   voix par defaut. Tout passe par saas/voice-clone (clone / reset / status). */
+let _vcState = { has: false, name: null };
+let _mediaRec = null, _recChunks = [], _recBlob = null;
+
+function blobToB64(blob) {
+  return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.onerror = () => res(''); fr.readAsDataURL(blob); });
+}
+async function chargerStatutVoix() {
+  const uid = S.user?.id || S.user?.email;
+  if (!uid) { renderVoiceCloneUI(); return; }
+  try {
+    const r = await fetch(VOICE_CLONE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'status', user_id: uid, email: S.user?.email }) });
+    const d = await r.json().catch(() => null);
+    if (d && d.success) { _vcState.has = !!d.has_custom_voice; _vcState.name = d.voice_name; }
+  } catch (e) {}
+  renderVoiceCloneUI();
+}
+function renderVoiceCloneUI() {
+  if (S.currentTool !== 'studio-voix') return;
+  const chips = document.getElementById('welcome-chips');
+  if (!chips) return;
+  let panel = document.getElementById('voice-clone-panel');
+  if (!panel) { panel = document.createElement('div'); panel.id = 'voice-clone-panel'; panel.style.cssText = 'width:100%;margin-top:14px;padding:12px 14px;border:1px solid rgba(212,175,55,.3);border-radius:12px;background:rgba(212,175,55,.06);text-align:left'; chips.parentNode.insertBefore(panel, chips.nextSibling); }
+  if (_vcState.has) {
+    panel.innerHTML = '<div style="font-weight:600;margin-bottom:6px">🎙️ Votre voix personnalisée est active' + (_vcState.name ? ' (' + escapeHtml(_vcState.name) + ')' : '') + '</div><div style="font-size:12px;opacity:.7;margin-bottom:10px">Vos voix off sont générées avec votre voix clonée.</div>';
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = '🔄 Réinitialiser / Supprimer'; b.style.cssText = 'padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;font-size:13px'; b.onclick = reinitialiserVoix; panel.appendChild(b);
+  } else {
+    panel.innerHTML = '<div style="font-weight:600;margin-bottom:6px">🎤 Clonez votre voix</div><div style="font-size:12px;opacity:.7;margin-bottom:10px">Enregistrez ou importez un court échantillon (~20-30 s, voix claire, sans bruit) : vos voix off seront générées avec VOTRE voix.</div>';
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = '🎤 Cloner ma voix'; b.style.cssText = 'padding:7px 12px;border-radius:8px;border:1px solid rgba(212,175,55,.5);background:rgba(212,175,55,.12);color:inherit;cursor:pointer;font-size:13px;font-weight:600'; b.onclick = openVoiceCloneModal; panel.appendChild(b);
+  }
+}
+function stopRec() { try { if (_mediaRec && _mediaRec.state === 'recording') _mediaRec.stop(); } catch (e) {} }
+function openVoiceCloneModal() {
+  if (!S.user && !S._guestMode) { openLoginModal('first_message'); return; }
+  const old = document.getElementById('voice-clone-modal'); if (old) old.remove();
+  _recBlob = null;
+  const ov = document.createElement('div'); ov.id = 'voice-clone-modal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:9999';
+  ov.innerHTML = '<div style="background:var(--bg-elevated,#141a24);border:1px solid rgba(255,255,255,.15);border-radius:16px;padding:22px;max-width:430px;width:90%;color:inherit">'
+    + '<div style="font-size:17px;font-weight:700;margin-bottom:8px">🎤 Cloner ma voix</div>'
+    + '<div style="font-size:13px;opacity:.75;margin-bottom:14px">Parlez ~20-30 secondes (une phrase claire, sans bruit de fond), ou importez un fichier audio (mp3, wav, m4a).</div>'
+    + '<div id="vc-status" style="font-size:13px;margin-bottom:12px;min-height:18px;opacity:.85"></div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    + '<button id="vc-rec" type="button" style="padding:8px 12px;border-radius:8px;border:1px solid rgba(212,175,55,.5);background:rgba(212,175,55,.12);color:inherit;cursor:pointer">⏺ Enregistrer</button>'
+    + '<button id="vc-imp" type="button" style="padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer">📁 Importer</button>'
+    + '<button id="vc-send" type="button" style="padding:8px 12px;border-radius:8px;border:none;background:var(--gold,#d4af37);color:#111;font-weight:600;cursor:pointer;display:none">✅ Cloner cette voix</button>'
+    + '</div>'
+    + '<input type="file" id="vc-file" accept="audio/*" style="display:none">'
+    + '<div style="text-align:right;margin-top:14px"><button id="vc-close" type="button" style="background:none;border:none;color:inherit;opacity:.6;cursor:pointer;font-size:13px">Fermer</button></div>'
+    + '</div>';
+  document.body.appendChild(ov);
+  const st = ov.querySelector('#vc-status');
+  const sendBtn = ov.querySelector('#vc-send');
+  ov.querySelector('#vc-close').onclick = () => { stopRec(); ov.remove(); };
+  ov.querySelector('#vc-imp').onclick = () => ov.querySelector('#vc-file').click();
+  ov.querySelector('#vc-file').onchange = (e) => { const f = e.target.files[0]; if (f) { _recBlob = f; st.textContent = 'Fichier prêt : ' + f.name; sendBtn.style.display = ''; } };
+  const recBtn = ov.querySelector('#vc-rec');
+  recBtn.onclick = async () => {
+    if (_mediaRec && _mediaRec.state === 'recording') { stopRec(); recBtn.textContent = '⏺ Enregistrer'; return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      _recChunks = []; _mediaRec = new MediaRecorder(stream);
+      _mediaRec.ondataavailable = e => { if (e.data.size) _recChunks.push(e.data); };
+      _mediaRec.onstop = () => { _recBlob = new Blob(_recChunks, { type: (_mediaRec && _mediaRec.mimeType) || 'audio/webm' }); st.textContent = 'Enregistrement prêt (' + Math.round(_recBlob.size / 1024) + ' Ko).'; sendBtn.style.display = ''; stream.getTracks().forEach(t => t.stop()); };
+      _mediaRec.start(); recBtn.textContent = '⏹ Arrêter'; st.textContent = '🔴 Enregistrement… parlez maintenant.';
+    } catch (err) { st.textContent = 'Micro inaccessible — importez plutôt un fichier audio.'; }
+  };
+  sendBtn.onclick = async () => {
+    if (!_recBlob) { st.textContent = 'Enregistrez ou importez d\'abord un audio.'; return; }
+    if (_recBlob.size > 12 * 1024 * 1024) { st.textContent = 'Échantillon trop lourd (12 Mo max).'; return; }
+    st.textContent = '⏳ Clonage en cours…'; sendBtn.disabled = true;
+    const b64 = await blobToB64(_recBlob);
+    const uid = S.user?.id || S.user?.email;
+    try {
+      const r = await fetch(VOICE_CLONE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'clone', user_id: uid, email: S.user?.email, audio_base64: b64, mime_type: _recBlob.type || 'audio/webm', voice_name: 'Voix de ' + (S.user?.name || 'client') }) });
+      const d = await r.json().catch(() => null);
+      if (d && d.success) { _vcState.has = true; _vcState.name = d.voice_name; ov.remove(); renderVoiceCloneUI(); showToast('✅ Votre voix a été clonée !', 3500); }
+      else { st.textContent = 'Échec : ' + ((d && d.error) || 'réessayez avec un échantillon plus long et plus clair.'); sendBtn.disabled = false; }
+    } catch (e) { st.textContent = 'Échec réseau. Réessayez.'; sendBtn.disabled = false; }
+  };
+}
+async function reinitialiserVoix() {
+  if (!confirm('Supprimer votre voix clonée et revenir à la voix par défaut ?')) return;
+  const uid = S.user?.id || S.user?.email;
+  try {
+    const r = await fetch(VOICE_CLONE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset', user_id: uid, email: S.user?.email }) });
+    const d = await r.json().catch(() => null);
+    if (d && d.success) { _vcState.has = false; _vcState.name = null; renderVoiceCloneUI(); showToast('Voix réinitialisée (voix par défaut).', 3000); }
+    else showToast('Échec de la réinitialisation.', 3000);
+  } catch (e) { showToast('Échec de la réinitialisation.', 3000); }
 }
 
 /* ═══ AI RESPONSES (multilingues) ═══════════════════════════════════ */
@@ -4589,6 +4686,8 @@ const ASYNC_ANALYSE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/analyse-a
 // par l'agent -- c'est lui qui verifie les jetons, appelle l'outil de retouche et
 // enchaine les modifications demandees ensuite dans la conversation.
 const UPLOAD_IMAGE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/upload-image';
+// Clonage instantane de voix (ElevenLabs) : cloner / reinitialiser / statut.
+const VOICE_CLONE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/voice-clone';
 let _docsSelectedFile = null;
 
 function docsDragOver(e) { e.preventDefault(); document.getElementById('docs-drop-zone').classList.add('drag-over'); }
