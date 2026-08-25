@@ -778,8 +778,8 @@ body.resultats-masques .btn-show-right{display:flex}
               <div class="tool-item soon" onclick="outilBientotDisponible('Génération et montage vidéo IA')">
                 <span class="tool-icon">🎬</span> Génération &amp; montage vidéo IA <span class="tool-soon-badge">Bientôt</span>
               </div>
-              <div class="tool-item soon" onclick="outilBientotDisponible('Changement de décor et arrière-plans')">
-                <span class="tool-icon">🖼️</span> Changement de décor <span class="tool-soon-badge">Bientôt</span>
+              <div class="tool-item" id="tool-decor" onclick="selectTool('decor','🖼️','Changement de décor')">
+                <span class="tool-icon">🖼️</span> Changement de décor
               </div>
             </div>
           </div>
@@ -1498,6 +1498,7 @@ const toolConfig = {
   'studio-image': { icon:'🎨', label:'Générer une image', welcome:'Mode **Studio Visuel** activé. Décrivez l\'image à générer (style photoréaliste ou illustration). Réservé au mode Vision Avancée (1 crédit par image).', chips:['🌅 Photo de produit','🏢 Illustration business','🎨 Style libre'], chipTexts:['Génère une photo de produit sur fond neutre pour ma boutique','Génère une illustration professionnelle pour mon activité','Génère une image de : '] },
   'studio-voix':  { icon:'🎙️', label:'Générer une voix off', welcome:'Mode **Voix off** activé. Collez le texte à lire, je génère la piste audio. Réservé au mode Vision Avancée (1,5 crédit par minute d\'audio).', chips:['🎙️ Voix off pub','📢 Message vocal','🗣️ Narration'], chipTexts:['Génère une voix off pour cette publicité : ','Génère un message vocal pour mes clients : ','Génère une narration pour ma présentation : '] },
   'retouche':     { icon:'📸', label:'Retouche photo studio', welcome:'Mode **Retouche photo** activé. Joignez une photo avec 📎 : quatre actions apparaissent sous l\'aperçu — **✂️ Détourer** (enlever le fond), **🔍 Agrandir HD**, **✨ Retoucher** le portrait et **💡 Rééclairer**. Réservé au mode Vision Avancée (1 jeton par action).', chips:['📎 Choisir une photo'], chipTexts:['@@ATTACH@@'] },
+  'decor':        { icon:'🖼️', label:'Changement de décor', welcome:'Mode **Changement de décor** activé. Importez une photo (le sujet), choisissez un nouveau fond (décrit OU importé), et l\'IA recompose le sujet dessus avec des lumières harmonisées. Réservé au mode Vision Avancée (1 crédit).', chips:['🖼️ Changer le décor d\'une photo'], chipTexts:['@@DECOR@@'] },
   media:        { icon:'🎞️', label:'Médiathèque libre de droits', welcome:'Mode **Médiathèque** activé, gratuit. Décrivez la photo, la vidéo ou le son que vous cherchez (Pexels, Freesound).', chips:['🖼️ Chercher une photo','🎬 Chercher une vidéo','🎵 Chercher un son'], chipTexts:['Cherche-moi une photo libre de droits de : ','Cherche-moi une vidéo libre de droits de : ','Cherche-moi un son libre de droits de : '] },
   canva:        { icon:'🖌️', label:'Connexion Canva', welcome:'Mode **Canva** activé. Connectez votre compte dans Paramètres → Connecteurs si ce n\'est pas déjà fait. Réservé au mode Vision Avancée (3 crédits par création/export).', chips:['📤 Exporter un design','🎨 Voir mes modèles'], chipTexts:['Exporte mon design Canva en PDF','Quels modèles de marque as-tu sur mon compte Canva ?'] },
   webdev:       { icon:'🚀', label:'Déployer un site web', welcome:'Mode **WebDev Deploy** activé. Décrivez le site à créer, je génère le code puis le dépose sur GitHub et le déploie en ligne. Réservé au mode Vision Avancée.', chips:['🌐 Landing page','🛍️ Page produit','📇 Page vitrine'], chipTexts:['Crée et déploie une landing page pour mon activité de : ','Crée et déploie une page produit pour : ','Crée et déploie une page vitrine pour mon entreprise'] }
@@ -1756,6 +1757,7 @@ function selectTool(tool, icon, label) {
   newSession();
   // La retouche photo est une action payante : l'outil s'ouvre directement en mode Vision.
   if (tool === 'retouche') setMode('vision');
+  if (tool === 'decor') setMode('vision');
   // Voix off : on affiche l'etat du clonage de voix (cloner / voix active / reset).
   if (tool === 'studio-voix') setTimeout(chargerStatutVoix, 60);
   closeSidebar();
@@ -2651,6 +2653,57 @@ function retoucherImage(file, operation) {
   return retoucheViaAgent(file, RETOUCHE_VERBES[operation] || 'Retouche cette image');
 }
 
+// Changement de décor : sujet + nouveau fond (décrit ou importé) -> l'agent
+// recompose le sujet sur le fond avec harmonisation des lumières (opération decor).
+async function openDecorModal() {
+  if (!S.user && !S._guestMode) { openLoginModal('first_message'); return; }
+  if (S.tokens < 1) { showTokenModal(1); return; }
+  const old = document.getElementById('decor-modal'); if (old) old.remove();
+  let subjFile = null, bgFile = null;
+  const btn = 'padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;font-size:13px';
+  const ov = document.createElement('div'); ov.id = 'decor-modal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px';
+  ov.innerHTML = '<div style="background:var(--bg-elevated,#141a24);border:1px solid rgba(255,255,255,.15);border-radius:16px;padding:22px;max-width:460px;width:100%;color:inherit">'
+    + '<div style="font-size:17px;font-weight:700;margin-bottom:8px">🖼️ Changement de décor</div>'
+    + '<div style="font-size:13px;opacity:.75;margin-bottom:14px">1) Importez la photo du <b>sujet</b>. 2) Choisissez le <b>nouveau fond</b> (à décrire ou à importer). Le sujet sera recomposé dessus avec des lumières harmonisées.</div>'
+    + '<div style="font-weight:600;font-size:13px;margin-bottom:6px">👤 Sujet</div>'
+    + '<button id="dc-subj-btn" type="button" style="' + btn + '">📷 Importer la photo du sujet</button><div id="dc-subj-name" style="font-size:12px;opacity:.7;margin:6px 0"></div>'
+    + '<div style="font-weight:600;font-size:13px;margin:12px 0 6px">🌄 Nouveau fond</div>'
+    + '<textarea id="dc-bg-desc" placeholder="Décrivez le fond (ex : plage au coucher de soleil, studio blanc, bureau moderne...)" style="width:100%;min-height:54px;padding:8px 10px;border-radius:8px;background:var(--bg,#0e131b);color:inherit;border:1px solid rgba(255,255,255,.2);font-size:13px;resize:vertical"></textarea>'
+    + '<div style="font-size:12px;opacity:.55;margin:6px 0;text-align:center">— ou —</div>'
+    + '<button id="dc-bg-btn" type="button" style="' + btn + '">🖼️ Importer une image de fond</button><div id="dc-bg-name" style="font-size:12px;opacity:.7;margin:6px 0"></div>'
+    + '<div id="dc-status" style="font-size:13px;min-height:16px;margin-top:8px;opacity:.85"></div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">'
+    + '<button id="dc-close" type="button" style="background:none;border:none;color:inherit;opacity:.6;cursor:pointer;font-size:13px">Fermer</button>'
+    + '<button id="dc-go" type="button" style="padding:9px 14px;border-radius:8px;border:none;background:var(--gold,#d4af37);color:#111;font-weight:600;cursor:pointer">✨ Appliquer le décor</button>'
+    + '</div>'
+    + '<input type="file" id="dc-subj-file" accept="image/*" style="display:none"><input type="file" id="dc-bg-file" accept="image/*" style="display:none">'
+    + '</div>';
+  document.body.appendChild(ov);
+  const $ = id => ov.querySelector(id);
+  $('#dc-close').onclick = () => ov.remove();
+  $('#dc-subj-btn').onclick = () => $('#dc-subj-file').click();
+  $('#dc-subj-file').onchange = e => { subjFile = e.target.files[0]; $('#dc-subj-name').textContent = subjFile ? ('✓ ' + subjFile.name) : ''; };
+  $('#dc-bg-btn').onclick = () => $('#dc-bg-file').click();
+  $('#dc-bg-file').onchange = e => { bgFile = e.target.files[0]; $('#dc-bg-name').textContent = bgFile ? ('✓ ' + bgFile.name) : ''; };
+  $('#dc-go').onclick = async () => {
+    const desc = $('#dc-bg-desc').value.trim();
+    if (!subjFile) { $('#dc-status').textContent = 'Importez d\'abord la photo du sujet.'; return; }
+    if (!bgFile && !desc) { $('#dc-status').textContent = 'Décrivez le fond ou importez une image de fond.'; return; }
+    $('#dc-status').textContent = '⏳ Préparation…'; $('#dc-go').disabled = true;
+    const subjUrl = await hebergerImage(subjFile);
+    if (!subjUrl) { $('#dc-status').textContent = 'Échec de l\'envoi du sujet. Réessayez.'; $('#dc-go').disabled = false; return; }
+    let bgUrl = null;
+    if (bgFile) { bgUrl = await hebergerImage(bgFile); if (!bgUrl) { $('#dc-status').textContent = 'Échec de l\'envoi du fond. Réessayez.'; $('#dc-go').disabled = false; return; } }
+    setMode('vision');
+    const msg = bgUrl
+      ? 'Change le décor : recompose le sujet de cette image sur ce nouveau fond, avec des lumières harmonisées (opération decor). Image sujet : ' + subjUrl + ' . Fond : ' + bgUrl
+      : 'Change le décor de cette image (sujet : ' + subjUrl + '). Nouveau fond souhaité : ' + desc + '. Génère d\'abord ce fond en image (type=image), puis recompose le sujet dessus avec l\'opération decor et des lumières harmonisées.';
+    ov.remove();
+    const input = document.getElementById('chat-input'); input.value = msg; autoResize(input); sendMessage();
+  };
+}
+
 /* ═══ CLONAGE DE VOIX (ElevenLabs) ══════════════════════════════════
    Le client enregistre ou importe un court echantillon : n8n cree un clone
    ElevenLabs et bascule sa voix off dessus. Un bouton permet de revenir a la
@@ -3339,7 +3392,7 @@ function closeTokenModal() { document.getElementById('modal-tokens').classList.r
    nouveaux outils (studio, webdev, canva) partagent le meme cout que le
    mode Vision Avancee (1 jeton) : c'est la garde reellement en place
    cote serveur aujourd'hui, on n'invente pas de tarif different. */
-const TOOL_COSTS = { navigation: 3, analyse: 5, 'studio-image': 1, 'studio-voix': 1.5, webdev: 1, canva: 3, retouche: 1 };
+const TOOL_COSTS = { navigation: 3, analyse: 5, 'studio-image': 1, 'studio-voix': 1.5, webdev: 1, canva: 3, retouche: 1, decor: 1 };
 function coutActionCourante() {
   if (S.mode === 'vision') return Math.max(1, TOOL_COSTS[S.currentTool] || 1);
   return TOOL_COSTS[S.currentTool] || 0; // 0 si l'outil courant est gratuit hors mode Vision
@@ -4912,6 +4965,7 @@ function useChip(text) {
   // Certains outils (Retouche photo) ne demandent pas un texte mais un fichier :
   // le chip ouvre alors directement le selecteur de photo.
   if (text === '@@ATTACH@@') { triggerFileInput(); return; }
+  if (text === '@@DECOR@@') { openDecorModal(); return; }
   const input = document.getElementById('chat-input');
   input.value = text;
   autoResize(input);
