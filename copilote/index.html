@@ -2655,7 +2655,7 @@ function retoucherImage(file, operation) {
    Le client enregistre ou importe un court echantillon : n8n cree un clone
    ElevenLabs et bascule sa voix off dessus. Un bouton permet de revenir a la
    voix par defaut. Tout passe par saas/voice-clone (clone / reset / status). */
-let _vcState = { has: false, name: null };
+let _vcState = { has: false, name: null, custom_id: null, active: null };
 let _mediaRec = null, _recChunks = [], _recBlob = null;
 
 function blobToB64(blob) {
@@ -2667,9 +2667,38 @@ async function chargerStatutVoix() {
   try {
     const r = await fetch(VOICE_CLONE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'status', user_id: uid, email: S.user?.email }) });
     const d = await r.json().catch(() => null);
-    if (d && d.success) { _vcState.has = !!d.has_custom_voice; _vcState.name = d.voice_name; }
+    if (d && d.success) { _vcState.has = !!d.has_custom_voice; _vcState.name = d.voice_name; _vcState.custom_id = d.custom_voice_id || null; _vcState.active = d.active_voice_id || null; }
   } catch (e) {}
   renderVoiceCloneUI();
+  renderVoiceSelector();
+}
+// Sélecteur de voix : Défaut / Mes voix clonées / Catalogue Pro. Le choix est
+// mémorisé cote serveur (action set) et utilise pour toutes les voix off.
+function renderVoiceSelector() {
+  if (S.currentTool !== 'studio-voix') return;
+  const chips = document.getElementById('welcome-chips');
+  if (!chips) return;
+  let panel = document.getElementById('voice-select-panel');
+  if (!panel) { panel = document.createElement('div'); panel.id = 'voice-select-panel'; panel.style.cssText = 'width:100%;margin-top:10px;padding:12px 14px;border:1px solid rgba(255,255,255,.12);border-radius:12px;text-align:left'; const clone = document.getElementById('voice-clone-panel'); (clone || chips).parentNode.insertBefore(panel, (clone || chips).nextSibling); }
+  const active = _vcState.active || '';
+  const opt = (v, label) => '<option value="' + v + '"' + (active === v || (!active && v === '') ? ' selected' : '') + '>' + label + '</option>';
+  let html = '<div style="font-weight:600;margin-bottom:8px">🔊 Voix utilisée pour vos voix off</div>';
+  html += '<select id="voice-select" style="width:100%;padding:8px 10px;border-radius:8px;background:var(--bg-elevated,#141a24);color:inherit;border:1px solid rgba(255,255,255,.2);font-size:13px">';
+  html += opt('', 'Voix par défaut (système)');
+  if (_vcState.has && _vcState.custom_id) html += '<optgroup label="Mes voix clonées">' + opt(_vcState.custom_id, '🎙️ Ma voix' + (_vcState.name ? ' (' + _vcState.name + ')' : '')) + '</optgroup>';
+  html += '<optgroup label="Catalogue Pro (voix populaires)">' + VOIX_POPULAIRES.map(v => opt(v.id, v.nom)).join('') + '</optgroup>';
+  html += '</select>';
+  panel.innerHTML = html;
+  panel.querySelector('#voice-select').onchange = (e) => changerVoixActive(e.target.value);
+}
+async function changerVoixActive(voice_id) {
+  const uid = S.user?.id || S.user?.email;
+  if (!uid) { openLoginModal('first_message'); return; }
+  _vcState.active = voice_id || null;
+  try {
+    await fetch(VOICE_CLONE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'set', user_id: uid, email: S.user?.email, voice_id: voice_id || null }) });
+    showToast('Voix mise à jour ✓', 2000);
+  } catch (e) { showToast('Échec du changement de voix.', 3000); }
 }
 function renderVoiceCloneUI() {
   if (S.currentTool !== 'studio-voix') return;
@@ -4686,8 +4715,22 @@ const ASYNC_ANALYSE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/analyse-a
 // par l'agent -- c'est lui qui verifie les jetons, appelle l'outil de retouche et
 // enchaine les modifications demandees ensuite dans la conversation.
 const UPLOAD_IMAGE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/upload-image';
-// Clonage instantane de voix (ElevenLabs) : cloner / reinitialiser / statut.
+// Clonage instantane de voix (ElevenLabs) : cloner / reinitialiser / statut / choisir.
 const VOICE_CLONE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/voice-clone';
+// Catalogue Pro : voix populaires ElevenLabs (IDs fixes, ne changent jamais).
+const VOIX_DEFAUT_ID = '21m00Tcm4TlvDq8ikWAM';
+const VOIX_POPULAIRES = [
+  { id: 'pNInz6obpgDQGcFmaJgB', nom: 'Adam — masculine, posée' },
+  { id: 'TX3LPaxmHKxFdv7VOQHJ', nom: 'Liam — masculine, énergique' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', nom: 'George — masculine, chaleureuse' },
+  { id: 'nPczCjzI2devNBz1zQrb', nom: 'Brian — masculine, profonde' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', nom: 'Daniel — masculine, présentateur' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', nom: 'Sarah — féminine, rassurante' },
+  { id: 'Xb7hH8MSUJpSbSDYk0k2', nom: 'Alice — féminine, claire' },
+  { id: 'pFZP5JQG7iQjIQuC4Bku', nom: 'Lily — féminine, douce' },
+  { id: 'cgSgspJ2msm6clMCkdW9', nom: 'Jessica — féminine, chaleureuse' },
+  { id: 'iP95p4xoKVk53GoZ742B', nom: 'Chris — masculine, naturelle' },
+];
 let _docsSelectedFile = null;
 
 function docsDragOver(e) { e.preventDefault(); document.getElementById('docs-drop-zone').classList.add('drag-over'); }
