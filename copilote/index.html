@@ -2704,7 +2704,9 @@ async function retoucheViaAgent(file, instruction) {
   if (!S.user && !S._guestMode) { openLoginModal('first_message'); return; }
   const MAX = 11 * 1024 * 1024;
   if (file.size > MAX) { showToast('Image trop volumineuse (11 Mo maximum).', 4000); return; }
-  if (S.tokens < 1) { showTokenModal(1); return; }
+  // Le depot de la video vers R2 est gratuit : on ne bloque pas sur le solde.
+  // Le montage, lui, est facture par l orchestrateateur, qui gere ses propres credits.
+
   const input = document.getElementById('chat-input');
   input.value = '';
   showToast('Envoi de la photo…', 1500);
