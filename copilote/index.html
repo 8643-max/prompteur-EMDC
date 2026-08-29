@@ -1,4 +1,4 @@
-﻿
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -2723,6 +2723,66 @@ function retoucherImage(file, operation) {
   return retoucheViaAgent(file, RETOUCHE_VERBES[operation] || 'Retouche cette image');
 }
 
+// 💾 Dépose la vidéo du client vers R2 (PUT présigné, progression réelle) puis transmet
+// les consignes + l'URL de lecture à l'orchestrateur, qui appelle l'outil de montage.
+async function deposerVideoViaAgent(file, instruction) {
+  if (!file) return;
+  if (!S.user && !S._guestMode) { openLoginModal("first_message"); return; }
+  if (file.size > VIDEO_MAX) { showToast("Vidéo trop volumineuse (1,5 Go maximum, environ 10 minutes).", 4500); return; }
+  if (S.tokens < 1) { showTokenModal(1); return; }
+  const input = document.getElementById('chat-input');
+  input.value = '';
+  const sid = S.currentSessionId;
+  const uid = S.user?.id || S.user?.email || 'guest';
+  let auth;
+  try {
+    const r = await fetch(VIDEO_AUTORISATION_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: uid,
+        session_id: sid || ('guest-' + Date.now().toString(36)),
+        nom_fichier: file.name,
+        taille: file.size,
+        type_mime: file.type || 'video/mp4',
+      }),
+    });
+    auth = await r.json().catch(() => null);
+  } catch (e) { auth = null; }
+  if (!auth || auth.ok === false) {
+    showToast((auth && auth.erreur) || "Autorisation de dépôt refusée. Réessayez.", 4500);
+    return;
+  }
+  showLoadingOverlay();
+  const bar = document.getElementById('loading-bar');
+  const msg = document.getElementById('loading-msg');
+  clearInterval(ltimer);
+  msg.textContent = "Envoi de la vidéo… (" + Math.round(file.size / (1024*1024)) + " Mo)";
+  bar.style.width = '2%';
+  const okDepot = await new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', auth.url_envoi, true);
+    xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) {
+        const p = Math.round((ev.loaded / ev.total) * 100);
+        msg.textContent = "Envoi de la vidéo… " + p + " % (" + Math.round(file.size / (1024*1024)) + " Mo)";
+        bar.style.width = Math.max(2, p) + '%';
+      }
+    };
+    xhr.onerror = () => resolve(false);
+    xhr.onabort = () => resolve(false);
+    xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
+    xhr.send(file);
+  });
+  hideLoadingOverlay();
+  if (!okDepot || !auth.url_lecture) { showToast("Échec de l'envoi de la vidéo. Réessayez.", 4500); return; }
+  removeFile();
+  setMode('vision');
+  input.value = (instruction || "Monte cette vidéo en respectant ces consignes : ") + " " + auth.chemin + " " + auth.url_lecture;
+  autoResize(input);
+  sendMessage();
+}
+
 // Changement de décor : sujet + nouveau fond (décrit ou importé) -> l'agent
 // recompose le sujet sur le fond avec harmonisation des lumières (opération decor).
 async function openDecorModal() {
@@ -3018,6 +3078,14 @@ async function sendMessage() {
   if (S.currentTool === 'retouche' && hasFile) {
     const img = fichiers.find(f => /^image\//.test(f.type || '') || ['png', 'jpg', 'jpeg', 'webp'].includes((f.name.split('.').pop() || '').toLowerCase()));
     if (img) { retoucheViaAgent(img, text || 'Détoure cette image (enlève l\'arrière-plan)'); return; }
+  }
+
+  // Voie Vidéo : un fichier vidéo joint est déposé vers R2 (pas en analyse/retouche),
+  // puis consignes + URL de lecture partent à l'orchestrateur, qui appelle le montage.
+  if (hasFile && fichiers.some(estVideo)) {
+    const v = fichiers.find(estVideo);
+    deposerVideoViaAgent(v, text || '');
+    return;
   }
 
   // Premier message d'un utilisateur non connecté → invite à créer son profil
@@ -3363,6 +3431,27 @@ function rendreFichiers() {
       const hint = document.createElement('div');
       hint.style.cssText = 'width:100%;font-size:11px;opacity:.6;margin-top:4px';
       hint.textContent = 'Retouche IA — 1 jeton par action. Ou tapez un message pour analyser l\'image.';
+      box.appendChild(bar);
+      box.appendChild(hint);
+    }
+  }
+  // Une seule VIDEO jointe : dépôt vers R2 + montage (pas la voie image).
+  if (n === 1) {
+    const f0 = S.pendingFiles[0];
+    if (estVideo(f0)) {
+      const bar = document.createElement('div');
+      bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;width:100%;margin-top:8px';
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = "🎬 Déposer la vidéo et la faire monter";
+      b.style.cssText = 'padding:6px 11px;border-radius:8px;border:1px solid rgba(212,175,55,.45);background:rgba(212,175,55,.10);color:inherit;cursor:pointer;font-size:13px;font-weight:600';
+      b.onmouseover = () => b.style.background = 'rgba(212,175,55,.22)';
+      b.onmouseout = () => b.style.background = 'rgba(212,175,55,.10)';
+      b.onclick = () => deposerVideoViaAgent(f0, '');
+      bar.appendChild(b);
+      const hint = document.createElement('div');
+      hint.style.cssText = 'width:100%;font-size:11px;opacity:.6;margin-top:4px';
+      hint.textContent = "Vidéo jusqu'à 1,5 Go (~10 min). Écrivez vos consignes de montage ci-dessous, puis envoyez.";
       box.appendChild(bar);
       box.appendChild(hint);
     }
@@ -4866,6 +4955,13 @@ const ASYNC_ANALYSE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/analyse-a
 // par l'agent -- c'est lui qui verifie les jetons, appelle l'outil de retouche et
 // enchaine les modifications demandees ensuite dans la conversation.
 const UPLOAD_IMAGE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/upload-image';
+// Dépôt vidéo direct vers Cloudflare R2 : la vidéo ne passe PAS dans le message
+// (limité à ~11 Mo en base64). On obtient une autorisation signée, on envoie en PUT
+// direct vers R2 (progression réelle), puis consignes + URL de lecture à l'orchestrateur.
+const VIDEO_AUTORISATION_URL = 'https://n8n.emdcconsulting.com/webhook/saas/video/autorisation';
+const VIDEO_EXT = ['mp4','mov','m4v','webm','avi'];
+const VIDEO_MAX = 1500 * 1024 * 1024; // 1,5 Go (~10 min)
+function estVideo(f){ const ext=(f.name.split('.').pop()||'').toLowerCase(); return /^video\//.test(f.type||'') || VIDEO_EXT.includes(ext); }
 // Clonage instantane de voix (ElevenLabs) : cloner / reinitialiser / statut / choisir.
 const VOICE_CLONE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/voice-clone';
 // Catalogue Pro : voix populaires ElevenLabs (IDs fixes, ne changent jamais).
