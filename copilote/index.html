@@ -2606,8 +2606,8 @@ function lireFichierTexte(file) {
 // fichier part en direct, il n'est ecrit nulle part.
 async function analyzeFileWithAgent(file, question, sessionId) {
   if (!file) return { error: "Aucun fichier joint." };
-  const MAX = 8 * 1024 * 1024;
-  if (file.size > MAX) return { error: "Fichier trop volumineux (8 Mo maximum)." };
+  const MAX = 11 * 1024 * 1024;
+  if (file.size > MAX) return { error: "Fichier trop volumineux (11 Mo maximum)." };
   const ext = (file.name.split('.').pop() || '').toLowerCase();
   // Documents bureautiques (Word, Excel, PowerPoint, LibreOffice) : lus cote serveur
   // via conversion Google Drive (ou LibreOffice), puis analyses comme le reste.
@@ -2702,8 +2702,8 @@ async function hebergerImage(file) {
 async function retoucheViaAgent(file, instruction) {
   if (!file) return;
   if (!S.user && !S._guestMode) { openLoginModal('first_message'); return; }
-  const MAX = 8 * 1024 * 1024;
-  if (file.size > MAX) { showToast('Image trop volumineuse (8 Mo maximum).', 4000); return; }
+  const MAX = 11 * 1024 * 1024;
+  if (file.size > MAX) { showToast('Image trop volumineuse (11 Mo maximum).', 4000); return; }
   if (S.tokens < 1) { showTokenModal(1); return; }
   const input = document.getElementById('chat-input');
   input.value = '';
