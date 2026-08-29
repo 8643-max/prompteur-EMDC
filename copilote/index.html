@@ -1,4 +1,59 @@
-
+  showLoadingOverlay();
+  const bar = document.getElementById('loading-bar');
+  const msg = document.getElementById('loading-msg');
+  clearInterval(ltimer);
+  msg.textContent = "Envoi de la vidéo… (" + Math.round(file.size / (1024*1024)) + " Mo)";
+  bar.style.width = '2%';
+  // Upload PAR SEGMENTS (v3) : on envoie de petits morceaux (8 Mo) un par un, pour
+  // éviter qu'un unique gros PUT soit coupé par le navigateur / la connexion.
+  const SEG = (auth.segment || (8*1024*1024));
+  const nb = (auth.segments && auth.segments.length) || 1;
+  const envoyes = [];
+  const outilPut = (url, blob) => new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url, true);
+    xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) {
+        const p = Math.round((ev.loaded / ev.total) * 100);
+        msg.textContent = "Envoi de la vidéo… " + p + " %";
+        bar.style.width = Math.max(2, p) + '%';
+      }
+    };
+    xhr.onerror = () => resolve(false);
+    xhr.onabort = () => resolve(false);
+    xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
+    xhr.send(blob);
+  });
+  let okTous = true;
+  if (nb > 1 && auth.segments) {
+    for (let i = 0; i < nb; i++) {
+      const from = i * SEG;
+      const to = Math.min(file.size, (i+1)*SEG);
+      const seg = auth.segments[i];
+      let sent = await outilPut(seg.url_envoi, file.slice(from, to));
+      let tentatives = 0;
+      while (!sent && tentatives < 3) { sent = await outilPut(seg.url_envoi, file.slice(from, to)); tentatives++; }
+      const pctv = Math.round(((i+1) / nb) * 100);
+      msg.textContent = "Envoi de la vidéo… " + pctv + " % (morceau " + (i+1) + "/" + nb + ")";
+      bar.style.width = Math.max(2, pctv) + '%';
+      if (!sent) { okTous = false; break; }
+      envoyes.push(seg);
+    }
+  } else {
+    const sent = await outilPut(auth.url_envoi, file);
+    okTous = sent;
+    envoyes.push({ url_lecture: auth.url_lecture });
+  }
+  hideLoadingOverlay();
+  if (!okTous) { showToast("Échec de l'envoi de la vidéo. Réessayez.", 4500); return; }
+  removeFile();
+  setMode('vision');
+  // Liste des URLs des segments (l'orchestrateur les assemble puis monte). En rétrocompat
+  // (nb=1), on garde l'URL unique.
+  input.value = (instruction || "Monte cette vidéo en respectant ces consignes : ") + " " + auth.chemin + " " + envoyes.map(e => e.url_lecture || auth.url_lecture).join(' ');
+  autoResize(input);
+  sendMessage();
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
