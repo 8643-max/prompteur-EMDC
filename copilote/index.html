@@ -2704,8 +2704,7 @@ async function retoucheViaAgent(file, instruction) {
   if (!S.user && !S._guestMode) { openLoginModal('first_message'); return; }
   const MAX = 11 * 1024 * 1024;
   if (file.size > MAX) { showToast('Image trop volumineuse (11 Mo maximum).', 4000); return; }
-  // Le depot de la video vers R2 est gratuit : on ne bloque pas sur le solde.
-  // Le montage, lui, est facture par l orchestrateateur, qui gere ses propres credits.
+  if (S.tokens < 1) { showTokenModal(1); return; }
 
   const input = document.getElementById('chat-input');
   input.value = '';
@@ -2731,7 +2730,6 @@ async function deposerVideoViaAgent(file, instruction) {
   if (!file) return;
   if (!S.user && !S._guestMode) { openLoginModal("first_message"); return; }
   if (file.size > VIDEO_MAX) { showToast("Vidéo trop volumineuse (1,5 Go maximum, environ 10 minutes).", 4500); return; }
-  if (S.tokens < 1) { showTokenModal(1); return; }
   const input = document.getElementById('chat-input');
   input.value = '';
   const sid = S.currentSessionId;
