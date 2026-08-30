@@ -952,7 +952,13 @@ body.resultats-masques .btn-show-right{display:flex}
           </div>
           <!-- Dictee vocale : masque tant que le navigateur ne la supporte pas (Firefox) -->
           <button class="btn-icon" id="btn-micro" onclick="basculerDictee()" title="Dicter votre message" style="display:none">🎤</button>
-          <textarea id="chat-input" rows="1" placeholder="Posez une question..." onkeydown="handleKey(event)" oninput="autoResize(this)" onpaste="onPasteFile(event)"></textarea>
+          <div id="jauge-ctx" class="jauge-ctx hidden">
+        <span class="jauge-txt"></span>
+        <div class="jauge-barre"><span></span></div>
+        <span class="jauge-detail"></span>
+        <button type="button" class="jauge-fermer" onclick="masquerJauge()" title="Masquer — réaffichable dans les réglages">✕</button>
+      </div>
+      <textarea id="chat-input" rows="1" placeholder="Posez une question..." onkeydown="handleKey(event)" oninput="autoResize(this)" onpaste="onPasteFile(event)"></textarea>
           <span id="tasks-indicator" style="display:none;font-size:11px;color:var(--gold);align-self:center;margin-right:6px;white-space:nowrap"></span>
           <button class="btn-send" id="btn-send" onclick="sendMessage()">🚀</button>
           <button class="btn-send" id="btn-stop" onclick="stopAgent()" title="Arrêter la tâche en cours" style="display:none;background:#8b2020;border-color:#a33">⏹</button>
@@ -1225,7 +1231,9 @@ body.resultats-masques .btn-show-right{display:flex}
            que par le compte administrateur. Tout nouveau reglage qui ne doit pas
            etre touche par un client se place ici. -->
       <div class="sgroup">
-        <div class="sgroup-title">Moteur de traitement</div>
+        <div class="srow"><div class="srow-left"><div class="srow-label">Jauge de mémoire</div><div class="srow-desc">Affiche où en est la mémoire de la conversation en cours.</div></div>
+          <label class="toggle"><input type="checkbox" id="s-jauge" onchange="afficherJauge(this.checked)" checked><span class="toggle-slider"></span></label></div>
+          <div class="sgroup-title">Moteur de traitement</div>
         <div class="srow">
           <div class="srow-left"><div class="srow-label">Ancien moteur (secours)</div><div class="srow-desc">Par défaut, l'agent découpe la demande, propose un plan et l'exécute étape par étape. Cochez pour revenir au mono-agent d'origine (tests EMDC).</div></div>
           <label class="toggle"><input type="checkbox" id="s-moteur-simple" onchange="savePref('moteurAncien',this.checked)"><span class="toggle-slider"></span></label>
@@ -1551,6 +1559,18 @@ const DB = {
   savePref: (k, v) => { const p = DB.prefs(); p[k] = v; localStorage.setItem('emdc_prefs', JSON.stringify(p)); }
 };
 
+
+function masquerJauge() {
+  try { DB.savePref('jaugeMasquee', true); } catch (_) {}
+  const z = document.getElementById('jauge-ctx');
+  if (z) z.classList.add('hidden');
+  try { showToast('Jauge masquée. Vous pouvez la réafficher dans Réglages.', 3500); } catch (_) {}
+}
+function afficherJauge(oui) {
+  try { DB.savePref('jaugeMasquee', !oui); } catch (_) {}
+  majJaugeConv();
+}
+
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
 const toolConfig = {
@@ -1601,6 +1621,7 @@ function saveMessageToSession(role, text, targetId) {
   const idx = sessions.findIndex(s => s.id === sid);
   if (idx === -1) return;
   sessions[idx].messages.push({ role, text, ts: Date.now() });
+  try { majJaugeConv(); } catch (_) {}
   sessions[idx].lastUsedAt = Date.now();
   DB.saveSessions(sessions);
   renderHistory();
@@ -2061,17 +2082,100 @@ function addMsgUI(role, text, save = true) {
 // Tout ce qui est affiche a l'ecran du client dans cette conversation, y
 // compris les messages automatiques de l'application : l'agent doit pouvoir
 // repondre a une question portant sur n'importe lequel d'entre eux.
+/* ═══ MEMOIRE LONGUE DE LA CONVERSATION ══════════════════════════════
+   Avant, on ne gardait que les 14 derniers messages : au-dela, tout etait
+   perdu sans un mot. Une conversation ou l on avait bati un projet entier
+   redemarrait de zero.
+   Desormais on CONDENSE au lieu de jeter :
+     - les consignes du client sont gardees en entier (courtes et precieuses) ;
+     - les douze derniers echanges restent intacts, c est la qu on travaille ;
+     - les longues reponses anciennes sont reduites a leur substance.
+   Le debut de la conversation survit donc, meme apres des centaines de
+   messages. C est exactement le principe qui fait tenir le Gardien.        */
+const FENETRE_CONV = { signes: 90000, recentsIntacts: 12 };
+
+// Une reponse ancienne : on garde son annonce et son resultat, pas le detail.
+function condenserReponse(t) {
+  const s = String(t || '').replace(/\s+/g, ' ').trim();
+  if (s.length <= 420) return s;
+  return s.slice(0, 260) + ' […] ' + s.slice(-150);
+}
+
 function buildHistoryForAgent(sessionId, currentText) {
-  const MAX = 14;
   try {
     const s = DB.sessions().find(x => x.id === sessionId);
-    let msgs = (s && s.messages) ? s.messages.slice(-MAX) : [];
+    let msgs = (s && s.messages) ? s.messages.slice() : [];
     // On retire le message que le client vient d'envoyer : il part deja a part.
     if (msgs.length && msgs[msgs.length - 1].role === 'user' && msgs[msgs.length - 1].text === currentText) {
       msgs = msgs.slice(0, -1);
     }
-    return msgs.map(m => ({ role: m.role, text: String(m.text || '').slice(0, 1200) }));
+    if (!msgs.length) return [];
+
+    const R = FENETRE_CONV.recentsIntacts;
+    const recents = msgs.slice(-R);
+    const anciens = msgs.slice(0, -R);
+
+    const sortie = anciens.map(m => m.role === 'user'
+      ? { role: 'user', text: String(m.text || '').slice(0, 1500) }      // vos consignes : gardees
+      : { role: 'assistant', text: condenserReponse(m.text) });          // les reponses : condensees
+    for (const m of recents) sortie.push({ role: m.role, text: String(m.text || '').slice(0, 4000) });
+
+    // Filet de securite : si c'est encore trop lourd, on rogne les plus
+    // vieilles reponses de l'agent -- JAMAIS ce que le client a ecrit.
+    let total = sortie.reduce((n, m) => n + m.text.length, 0);
+    for (let i = 0; i < sortie.length - R && total > FENETRE_CONV.signes; i++) {
+      if (sortie[i].role === 'user') continue;
+      const av = sortie[i].text.length;
+      if (av <= 160) continue;
+      sortie[i] = { role: 'assistant', text: sortie[i].text.slice(0, 150) + ' […]' };
+      total -= av - sortie[i].text.length;
+    }
+    return sortie;
   } catch (_) { return []; }
+}
+
+/* ═══ LA JAUGE : ou en est la memoire de cette conversation ? ════════ */
+function poidsConversation(sessionId) {
+  try {
+    const h = buildHistoryForAgent(sessionId, '');
+    const signes = h.reduce((n, m) => n + (m.text ? m.text.length : 0), 0);
+    const s = DB.sessions().find(x => x.id === sessionId);
+    const total = (s && s.messages) ? s.messages.length : 0;
+    const condenses = Math.max(0, total - FENETRE_CONV.recentsIntacts);
+    return {
+      messages: total, condenses, signes,
+      pct: Math.min(100, Math.round(signes / FENETRE_CONV.signes * 100)),
+    };
+  } catch (_) { return { messages: 0, condenses: 0, signes: 0, pct: 0 }; }
+}
+
+const PALIERS_CONV = [
+  { jusqua: 45, classe: 'calme', icone: '🟢', dit: 'Mémoire au large' },
+  { jusqua: 75, classe: 'moyen', icone: '🔵', dit: 'Mémoire à mi-course' },
+  { jusqua: 99, classe: 'chaud', icone: '🟡', dit: 'Mémoire bien remplie' },
+  { jusqua: 1e9, classe: 'pleine', icone: '🔴', dit: 'Mémoire pleine' },
+];
+
+function majJaugeConv() {
+  const z = document.getElementById('jauge-ctx');
+  if (!z) return;
+  let masquee = false;
+  try { masquee = DB.prefs().jaugeMasquee === true; } catch (_) {}
+  const c = poidsConversation(S.currentSessionId);
+  if (masquee || c.messages < 6) { z.classList.add('hidden'); return; }
+
+  const p = PALIERS_CONV.find(x => c.pct <= x.jusqua);
+  z.className = 'jauge-ctx ' + p.classe;
+  const t = z.querySelector('.jauge-txt');
+  const b = z.querySelector('.jauge-barre span');
+  const d = z.querySelector('.jauge-detail');
+  if (t) t.textContent = p.icone + ' ' + p.dit + ' · ' + c.pct + ' %';
+  if (b) b.style.width = Math.max(2, c.pct) + '%';
+  if (d) d.textContent = c.messages + ' messages';
+  z.title = c.messages + ' messages dans cette conversation'
+    + (c.condenses > 0 ? ', dont ' + c.condenses + ' anciens condensés (vos consignes sont gardées en entier)' : '')
+    + '\nRien n\'est perdu : quand la conversation s\'allonge, les longues réponses anciennes'
+    + '\nsont réduites à leur substance, jamais effacées.';
 }
 
 /* ═══ MESSAGE D INDISPONIBILITE ═════════════════════════════════════
@@ -4268,7 +4372,27 @@ function exportHistory(fmt) {
   }
 }
 function exportHistory_buildHtml(sessions) {
-  let body = '<html><head><meta charset="utf-8"><title>EMDC Historique</title><style>body{font-family:sans-serif;max-width:700px;margin:40px auto;color:#1a1a2e}h1{color:#0a1128}h2{color:#b8860b;font-size:14px;margin-top:24px}.msg{margin:6px 0;padding:8px 12px;border-radius:8px}.user{background:#e8f0fe}.ai{background:#f5f5f5}@media print{h1{page-break-before:avoid}}</style></head><body>';
+  let body = '<html><head><meta charset="utf-8"><title>EMDC Historique</title><style>body{font-family:sans-serif;max-width:700px;margin:40px auto;color:#1a1a2e}h1{color:#0a1128}h2{color:#b8860b;font-size:14px;margin-top:24px}.msg{margin:6px 0;padding:8px 12px;border-radius:8px}.user{background:#e8f0fe}.ai{background:#f5f5f5}@media print{h1{page-break-before:avoid}}
+    /* Jauge de mémoire de conversation */
+    .jauge-ctx{display:flex;align-items:center;gap:10px;font-size:12px;padding:6px 12px;margin:0 auto 8px;max-width:900px;
+      border-radius:9px;border:1px solid var(--border,rgba(255,255,255,.1));background:var(--surface-2,rgba(255,255,255,.04));
+      color:var(--text-muted,#8b96a8);transition:border-color .4s,background .4s}
+    .jauge-ctx.hidden{display:none}
+    .jauge-ctx .jauge-txt{white-space:nowrap}
+    .jauge-ctx .jauge-barre{flex:1;height:4px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;min-width:60px}
+    .jauge-ctx .jauge-barre span{display:block;height:100%;border-radius:3px;transition:width .45s ease,background .4s}
+    .jauge-ctx .jauge-detail{font-variant-numeric:tabular-nums;opacity:.65;white-space:nowrap}
+    .jauge-ctx .jauge-fermer{background:none;border:none;color:inherit;opacity:.5;cursor:pointer;font-size:13px;padding:0 2px;line-height:1}
+    .jauge-ctx .jauge-fermer:hover{opacity:1}
+    .jauge-ctx.calme  .jauge-barre span{background:#22c55e}
+    .jauge-ctx.moyen  .jauge-barre span{background:#3b82f6}
+    .jauge-ctx.chaud  {border-color:rgba(212,175,55,.4)}
+    .jauge-ctx.chaud  .jauge-barre span{background:#d4af37}
+    .jauge-ctx.pleine {border-color:rgba(239,68,68,.45)}
+    .jauge-ctx.pleine .jauge-barre span{background:#ef4444}
+    @media (max-width:560px){ .jauge-ctx .jauge-detail{display:none} }
+    @media (prefers-reduced-motion:reduce){ .jauge-ctx,.jauge-ctx .jauge-barre span{transition:none} }
+  </style></head><body>';
   body += '<h1>EMDC Copilote — Historique</h1><p>Exporté le ' + new Date().toLocaleDateString('fr-FR') + '</p>';
   sessions.forEach(s => {
     body += `<h2>📌 ${s.title||'Session'} (${new Date(s.lastUsedAt).toLocaleDateString('fr-FR')})</h2>`;
