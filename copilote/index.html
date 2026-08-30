@@ -54,34 +54,3 @@
   input.value = (instruction || "Monte cette vidéo en respectant ces consignes : ") + " " + auth.chemin + " " + envoyes.map(e => e.url_lecture || auth.url_lecture).join(' ');
   autoResize(input);
   sendMessage();
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
-<!-- BUILD v2026-08-28-c : taps tactiles fiables dans la sidebar (iOS) + anti-cache -->
-<!-- BUILD v2026-08-30-a : affichage en direct des réponses d'outils pendant l'exécution -->
-<meta name="emdc-build" content="2026-08-30-a">
-<meta name="theme-color" content="#0A1128">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>EMDC Copilote d'Entreprise</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg-base:#0A1128;--bg-surface:#0F1A35;--bg-elevated:#152040;--bg-hover:#1A2850;--bg-input:#0D1730;
-  --border:rgba(212,175,55,.14);--border-strong:rgba(212,175,55,.32);--border-user:rgba(212,175,55,.22);
-  --gold:#D4AF37;--gold-light:#F0CF6B;--gold-muted:#C5A059;--gold-dim:rgba(212,175,55,.10);--gold-glow:rgba(212,175,55,.22);
-  --text-primary:#F0EAD6;--text-secondary:#8FA8CC;--text-muted:#5C7595;
-  --green:#22C55E;--green-dim:rgba(34,197,94,.14);
-  --amber:#F59E0B;--amber-dim:rgba(245,158,11,.14);
-  --red:#EF4444;--red-dim:rgba(239,68,68,.14);
-  --user-bubble:#152A4A;--ai-bubble:#0C1830;--on-accent:#0A1128;--code-bg:rgba(0,0,0,.3);
-  --radius:10px;--header-h:56px;--sidebar-w:236px;--right-w:288px;
-  --font-size:14px;
-}
-html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:var(--bg-base);color:var(--text-primary);overflow:hidden;font-size:var(--font-size);line-height:1.55}
-::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:3px}
-.gold-text{background:linear-gradient(115deg,#C5A059 0%,#F0CF6B 35%,#D4AF37 55%,#F0CF6B 75%,#C5A059 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-</style>
