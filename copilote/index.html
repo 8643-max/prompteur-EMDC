@@ -631,6 +631,12 @@ body.resultats-masques .btn-show-right{display:flex}
 
     .jauge-ctx{display:flex;align-items:center;gap:10px;font-size:12px;padding:6px 12px;margin:0 0 8px;width:100%;box-sizing:border-box;border-radius:9px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);color:#8b96a8;transition:border-color .4s}
     .jauge-ctx.hidden{display:none}
+    .jauge-ouvrir{display:flex;align-items:center;gap:6px;font-size:11.5px;padding:4px 10px;margin:0 0 8px;
+      border-radius:20px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);
+      color:#8b96a8;cursor:pointer;font-family:inherit;transition:border-color .3s,color .3s}
+    .jauge-ouvrir:hover{border-color:rgba(212,175,55,.45);color:#d4af37}
+    .jauge-ouvrir.hidden{display:none}
+    .jauge-ouvrir .jauge-fleche{opacity:.55;font-size:14px;line-height:1}
     .jauge-ctx .jauge-txt{white-space:nowrap}
     .jauge-ctx .jauge-barre{flex:1;height:4px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;min-width:60px}
     .jauge-ctx .jauge-barre span{display:block;height:100%;border-radius:3px;transition:width .45s ease,background .4s}
@@ -955,7 +961,8 @@ body.resultats-masques .btn-show-right{display:flex}
           <button class="mode-btn standard active" id="mode-standard" onclick="setMode('standard')"><span class="mode-dot"></span><span class="mode-label"> Mode Standard </span><span class="mode-cost">Gratuit</span></button>
           <button class="mode-btn vision" id="mode-vision" onclick="setMode('vision')"><span class="mode-dot"></span><span class="mode-label"> ⚡ Vision Avancée </span><span class="mode-cost" id="mode-vision-cost">1 crédit</span></button>
         </div>
-        <div id="jauge-ctx" class="jauge-ctx hidden"><span class="jauge-txt"></span><div class="jauge-barre"><span></span></div><span class="jauge-detail"></span><button type="button" class="jauge-fermer" onclick="masquerJauge()" title="Masquer">&#10005;</button></div>
+        <div id="jauge-ctx" class="jauge-ctx hidden"><span class="jauge-txt"></span><div class="jauge-barre"><span></span></div><span class="jauge-detail"></span><button type="button" class="jauge-fermer" onclick="masquerJauge()" title="Réduire">&#10005;</button></div>
+        <button type="button" id="jauge-ouvrir" class="jauge-ouvrir hidden" onclick="deplierJauge()" title="Afficher la mémoire de la conversation"><span class="jauge-pastille"></span><span class="jauge-fleche">&#8250;</span></button>
         <div class="input-row">
           <!-- Bouton fichier : input transparent superposé, fiable sur iOS Safari -->
           <div style="position:relative;width:38px;height:38px;flex-shrink:0">
@@ -1244,7 +1251,7 @@ body.resultats-masques .btn-show-right{display:flex}
            que par le compte administrateur. Tout nouveau reglage qui ne doit pas
            etre touche par un client se place ici. -->
       <div class="sgroup">
-        <div class="srow"><div class="srow-left"><div class="srow-label">Jauge de mémoire</div><div class="srow-desc">Affiche où en est la mémoire de la conversation.</div></div><label class="toggle"><input type="checkbox" id="s-jauge" onchange="afficherJauge(this.checked)" checked><span class="toggle-slider"></span></label></div>
+        <div class="srow"><div class="srow-left"><div class="srow-label">Jauge de mémoire</div><div class="srow-desc">Affiche où en est la mémoire de la conversation. Le ✕ la replie sans la supprimer.</div></div><label class="toggle"><input type="checkbox" id="s-jauge" onchange="afficherJauge(this.checked)" checked><span class="toggle-slider"></span></label></div>
           <div class="sgroup-title">Moteur de traitement</div>
         <div class="srow">
           <div class="srow-left"><div class="srow-label">Ancien moteur (secours)</div><div class="srow-desc">Par défaut, l'agent découpe la demande, propose un plan et l'exécute étape par étape. Cochez pour revenir au mono-agent d'origine (tests EMDC).</div></div>
@@ -1590,11 +1597,31 @@ function poidsConversation(sessionId) {
 }
 function majJaugeConv() {
   var z = document.getElementById('jauge-ctx');
+  var o = document.getElementById('jauge-ouvrir');
   if (!z) return;
-  var masquee = false;
+  // Trois états : éteinte (réglages), repliée (pastille), ouverte (barre).
+  var masquee = false, repliee = false;
   try { masquee = DB.prefs().jaugeMasquee === true; } catch (e) {}
+  try { repliee = DB.prefs().jaugeRepliee === true; } catch (e) {}
   var c = poidsConversation(S.currentSessionId);
-  if (masquee || c.messages < 6) { z.classList.add('hidden'); return; }
+
+  if (masquee || c.messages < 6) {
+    z.classList.add('hidden');
+    if (o) o.classList.add('hidden');
+    return;
+  }
+  if (repliee) {
+    z.classList.add('hidden');
+    if (o) {
+      o.classList.remove('hidden');
+      var pr = PALIERS_CONV.find(function (x) { return c.pct <= x.jusqua; });
+      var sp = o.querySelector('.jauge-pastille');
+      if (sp) sp.textContent = pr.icone + ' ' + c.pct + ' %';
+      o.title = 'Mémoire de la conversation : ' + c.pct + ' % · ' + c.messages + ' messages. Cliquez pour ouvrir.';
+    }
+    return;
+  }
+  if (o) o.classList.add('hidden');
   var p = PALIERS_CONV.find(function (x) { return c.pct <= x.jusqua; });
   z.className = 'jauge-ctx ' + p.classe;
   var t = z.querySelector('.jauge-txt');
@@ -1605,14 +1632,22 @@ function majJaugeConv() {
   if (d) d.textContent = c.messages + ' messages';
   z.title = c.messages + ' messages dans cette conversation. Rien ne se perd : quand elle s allonge, les longues reponses anciennes sont reduites a leur substance, et vos consignes sont gardees en entier.';
 }
+// Le ✕ replie : la pastille reste, on peut toujours revenir.
 function masquerJauge() {
-  try { DB.savePref('jaugeMasquee', true); } catch (e) {}
-  var z = document.getElementById('jauge-ctx');
-  if (z) z.classList.add('hidden');
-  try { showToast('Jauge masquee. Vous pouvez la reafficher dans les reglages.', 3500); } catch (e) {}
+  try { DB.savePref('jaugeRepliee', true); } catch (e) {}
+  majJaugeConv();
+  try { showToast('Jauge repliee. Cliquez sur la pastille pour la rouvrir.', 3000); } catch (e) {}
 }
+function deplierJauge() {
+  try { DB.savePref('jaugeRepliee', false); } catch (e) {}
+  majJaugeConv();
+}
+// L'interrupteur des reglages, lui, l'eteint completement.
 function afficherJauge(oui) {
-  try { DB.savePref('jaugeMasquee', !oui); } catch (e) {}
+  try {
+    DB.savePref('jaugeMasquee', !oui);
+    if (oui) DB.savePref('jaugeRepliee', false);
+  } catch (e) {}
   majJaugeConv();
 }
 
