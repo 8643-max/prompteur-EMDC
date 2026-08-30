@@ -1227,8 +1227,8 @@ body.resultats-masques .btn-show-right{display:flex}
       <div class="sgroup">
         <div class="sgroup-title">Moteur de traitement</div>
         <div class="srow">
-          <div class="srow-left"><div class="srow-label">Moteur simplifié (secours EMDC)</div><div class="srow-desc">Par défaut, l'agent découpe la demande, propose un plan et l'exécute étape par étape. Cochez pour revenir au mono-agent d'origine (tests EMDC).</div></div>
-          <label class="toggle"><input type="checkbox" id="s-moteur-simple" onchange="savePref('moteurSimple',this.checked)"><span class="toggle-slider"></span></label>
+          <div class="srow-left"><div class="srow-label">Ancien moteur (secours)</div><div class="srow-desc">Par défaut, l'agent découpe la demande, propose un plan et l'exécute étape par étape. Cochez pour revenir au mono-agent d'origine (tests EMDC).</div></div>
+          <label class="toggle"><input type="checkbox" id="s-moteur-simple" onchange="savePref('moteurAncien',this.checked)"><span class="toggle-slider"></span></label>
         </div>
       </div>
       <div class="sgroup">
@@ -4186,7 +4186,7 @@ function initVocal() {
   const l = document.getElementById('s-lecture'); if (l) l.checked = !!p.lectureVoix;
   const e = document.getElementById('s-etapes-voix'); if (e) e.checked = !!p.etapesVoix;
   const nt = document.getElementById('s-notifs'); if (nt) nt.checked = !!p.notifsMission && typeof Notification !== 'undefined' && Notification.permission === 'granted';
-  const fa = document.getElementById('s-moteur-simple'); if (fa) fa.checked = !!p.moteurSimple;
+  const fa = document.getElementById('s-moteur-simple'); if (fa) fa.checked = !!p.moteurAncien;
   // Les voix arrivent de facon asynchrone : on recharge la liste des qu elle change.
   if (lectureDisponible()) {
     chargerVoix();
@@ -5003,7 +5003,11 @@ const ASYNC_FILE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/chat-queue';
 // Moteur a deux niveaux (Agent Client qui cadre + Orchestrateur qui execute,
 // avec decoupage en sous-taches, validation de plan et checklist) par defaut.
 // Le moteur simplifie (mono-agent) reste dispo en secours via un reglage EMDC.
-function urlDuMoteur() { return DB.prefs().moteurSimple ? ASYNC_CHAT_URL : ASYNC_FILE_URL; }
+// L'agent de conversation est desormais le chemin normal : il repond lui-meme
+// aux questions et se sert de ses propres outils (recherche, documents, agenda...),
+// et ne confie a l'orchestrateur que les missions lourdes. L'ancien moteur reste
+// accessible d'un clic dans les reglages, en secours.
+function urlDuMoteur() { return DB.prefs().moteurAncien ? ASYNC_FILE_URL : ASYNC_CHAT_URL; }
 const ASYNC_STATUS_URL = 'https://n8n.emdcconsulting.com/webhook/saas/async/status';
 const ASYNC_ANALYSE_URL = 'https://n8n.emdcconsulting.com/webhook/saas/analyse-async';
 // Retouche d'image : la photo est d'abord hebergee (URL publique), puis TOUT passe
