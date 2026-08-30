@@ -626,6 +626,28 @@ body.resultats-masques .btn-show-right{display:flex}
   /* Safe area header */
   .app-header{padding-top:env(safe-area-inset-top,0px)}
 }
+
+    /* La jauge prend TOUTE la largeur et passe au-dessus de la zone de saisie :
+       elle ne doit jamais rogner la place dont le client a besoin pour ecrire,
+       surtout sur telephone. */
+    /* La jauge vit dans .input-bar (colonne), AU-DESSUS de .input-row : elle ne
+       doit jamais rogner la place dont le client a besoin pour ecrire, surtout
+       sur telephone. */
+    .jauge-ctx{display:flex;align-items:center;gap:10px;font-size:12px;padding:6px 12px;margin:0 0 8px;width:100%;box-sizing:border-box;border-radius:9px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);color:#8b96a8;transition:border-color .4s}
+    .jauge-ctx.hidden{display:none}
+    .jauge-ctx .jauge-txt{white-space:nowrap}
+    .jauge-ctx .jauge-barre{flex:1;height:4px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;min-width:60px}
+    .jauge-ctx .jauge-barre span{display:block;height:100%;border-radius:3px;transition:width .45s ease,background .4s}
+    .jauge-ctx .jauge-detail{opacity:.65;white-space:nowrap}
+    .jauge-ctx .jauge-fermer{background:none;border:none;color:inherit;opacity:.5;cursor:pointer;font-size:13px;padding:0 2px;line-height:1}
+    .jauge-ctx .jauge-fermer:hover{opacity:1}
+    .jauge-ctx.calme .jauge-barre span{background:#22c55e}
+    .jauge-ctx.moyen .jauge-barre span{background:#3b82f6}
+    .jauge-ctx.chaud{border-color:rgba(212,175,55,.4)}
+    .jauge-ctx.chaud .jauge-barre span{background:#d4af37}
+    .jauge-ctx.pleine{border-color:rgba(239,68,68,.45)}
+    .jauge-ctx.pleine .jauge-barre span{background:#ef4444}
+    @media (max-width:560px){.jauge-ctx .jauge-detail{display:none}}
 </style>
 
 <!-- ══ INLINE SVG DEFS ══════════════════════════════════════════════ -->
@@ -937,6 +959,7 @@ body.resultats-masques .btn-show-right{display:flex}
           <button class="mode-btn standard active" id="mode-standard" onclick="setMode('standard')"><span class="mode-dot"></span><span class="mode-label"> Mode Standard </span><span class="mode-cost">Gratuit</span></button>
           <button class="mode-btn vision" id="mode-vision" onclick="setMode('vision')"><span class="mode-dot"></span><span class="mode-label"> ⚡ Vision Avancée </span><span class="mode-cost" id="mode-vision-cost">1 crédit</span></button>
         </div>
+        <div id="jauge-ctx" class="jauge-ctx hidden"><span class="jauge-txt"></span><div class="jauge-barre"><span></span></div><span class="jauge-detail"></span><button type="button" class="jauge-fermer" onclick="masquerJauge()" title="Masquer">&#10005;</button></div>
         <div class="input-row">
           <!-- Bouton fichier : input transparent superposé, fiable sur iOS Safari -->
           <div style="position:relative;width:38px;height:38px;flex-shrink:0">
@@ -1225,7 +1248,8 @@ body.resultats-masques .btn-show-right{display:flex}
            que par le compte administrateur. Tout nouveau reglage qui ne doit pas
            etre touche par un client se place ici. -->
       <div class="sgroup">
-        <div class="sgroup-title">Moteur de traitement</div>
+        <div class="srow"><div class="srow-left"><div class="srow-label">Jauge de mémoire</div><div class="srow-desc">Affiche où en est la mémoire de la conversation.</div></div><label class="toggle"><input type="checkbox" id="s-jauge" onchange="afficherJauge(this.checked)" checked><span class="toggle-slider"></span></label></div>
+          <div class="sgroup-title">Moteur de traitement</div>
         <div class="srow">
           <div class="srow-left"><div class="srow-label">Ancien moteur (secours)</div><div class="srow-desc">Par défaut, l'agent découpe la demande, propose un plan et l'exécute étape par étape. Cochez pour revenir au mono-agent d'origine (tests EMDC).</div></div>
           <label class="toggle"><input type="checkbox" id="s-moteur-simple" onchange="savePref('moteurAncien',this.checked)"><span class="toggle-slider"></span></label>
@@ -1551,6 +1575,51 @@ const DB = {
   savePref: (k, v) => { const p = DB.prefs(); p[k] = v; localStorage.setItem('emdc_prefs', JSON.stringify(p)); }
 };
 
+
+/* Jauge de memoire : ou en est la conversation en cours ? */
+var PALIERS_CONV = [
+  { jusqua: 45, classe: 'calme', icone: '🟢', dit: 'Memoire au large' },
+  { jusqua: 75, classe: 'moyen', icone: '🔵', dit: 'Memoire a mi-course' },
+  { jusqua: 99, classe: 'chaud', icone: '🟡', dit: 'Memoire bien remplie' },
+  { jusqua: 1e9, classe: 'pleine', icone: '🔴', dit: 'Memoire pleine' }
+];
+function poidsConversation(sessionId) {
+  try {
+    var h = buildHistoryForAgent(sessionId, '');
+    var signes = h.reduce(function (n, m) { return n + (m.text ? m.text.length : 0); }, 0);
+    var s = DB.sessions().find(function (x) { return x.id === sessionId; });
+    var total = (s && s.messages) ? s.messages.length : 0;
+    return { messages: total, signes: signes, pct: Math.min(100, Math.round(signes / 90000 * 100)) };
+  } catch (e) { return { messages: 0, signes: 0, pct: 0 }; }
+}
+function majJaugeConv() {
+  var z = document.getElementById('jauge-ctx');
+  if (!z) return;
+  var masquee = false;
+  try { masquee = DB.prefs().jaugeMasquee === true; } catch (e) {}
+  var c = poidsConversation(S.currentSessionId);
+  if (masquee || c.messages < 6) { z.classList.add('hidden'); return; }
+  var p = PALIERS_CONV.find(function (x) { return c.pct <= x.jusqua; });
+  z.className = 'jauge-ctx ' + p.classe;
+  var t = z.querySelector('.jauge-txt');
+  var b = z.querySelector('.jauge-barre span');
+  var d = z.querySelector('.jauge-detail');
+  if (t) t.textContent = p.icone + ' ' + p.dit + ' · ' + c.pct + ' %';
+  if (b) b.style.width = Math.max(2, c.pct) + '%';
+  if (d) d.textContent = c.messages + ' messages';
+  z.title = c.messages + ' messages dans cette conversation. Rien ne se perd : quand elle s allonge, les longues reponses anciennes sont reduites a leur substance, et vos consignes sont gardees en entier.';
+}
+function masquerJauge() {
+  try { DB.savePref('jaugeMasquee', true); } catch (e) {}
+  var z = document.getElementById('jauge-ctx');
+  if (z) z.classList.add('hidden');
+  try { showToast('Jauge masquee. Vous pouvez la reafficher dans les reglages.', 3500); } catch (e) {}
+}
+function afficherJauge(oui) {
+  try { DB.savePref('jaugeMasquee', !oui); } catch (e) {}
+  majJaugeConv();
+}
+
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
 const toolConfig = {
@@ -1601,6 +1670,7 @@ function saveMessageToSession(role, text, targetId) {
   const idx = sessions.findIndex(s => s.id === sid);
   if (idx === -1) return;
   sessions[idx].messages.push({ role, text, ts: Date.now() });
+  try { majJaugeConv(); } catch (e) {}
   sessions[idx].lastUsedAt = Date.now();
   DB.saveSessions(sessions);
   renderHistory();
