@@ -2062,7 +2062,12 @@ function addMsgUI(role, text, save = true) {
 // compris les messages automatiques de l'application : l'agent doit pouvoir
 // repondre a une question portant sur n'importe lequel d'entre eux.
 function buildHistoryForAgent(sessionId, currentText) {
-  const MAX = 14;
+  // Memoire longue : on ne jette plus le debut d une conversation, on le
+  // CONDENSE. Les consignes du client sont gardees en entier (courtes et
+  // precieuses), les douze derniers echanges restent intacts, et les longues
+  // reponses anciennes sont reduites a leur substance. Une conversation ou
+  // l on a bati un projet entier ne redemarre plus de zero.
+  const MAX = 400;
   try {
     const s = DB.sessions().find(x => x.id === sessionId);
     let msgs = (s && s.messages) ? s.messages.slice(-MAX) : [];
@@ -2070,7 +2075,28 @@ function buildHistoryForAgent(sessionId, currentText) {
     if (msgs.length && msgs[msgs.length - 1].role === 'user' && msgs[msgs.length - 1].text === currentText) {
       msgs = msgs.slice(0, -1);
     }
-    return msgs.map(m => ({ role: m.role, text: String(m.text || '').slice(0, 1200) }));
+    const R = 12;
+    const recents = msgs.slice(-R);
+    const anciens = msgs.slice(0, -R);
+    const court = (t) => {
+      const x = String(t || '').replace(/\s+/g, ' ').trim();
+      return x.length <= 420 ? x : (x.slice(0, 260) + ' [...] ' + x.slice(-150));
+    };
+    const sortie = anciens.map(m => m.role === 'user'
+      ? { role: 'user', text: String(m.text || '').slice(0, 1500) }
+      : { role: 'assistant', text: court(m.text) });
+    for (const m of recents) sortie.push({ role: m.role, text: String(m.text || '').slice(0, 4000) });
+    // Filet : si c est encore trop lourd, on rogne les plus vieilles reponses
+    // de l agent, JAMAIS ce que le client a ecrit.
+    let poids = sortie.reduce((n, m) => n + m.text.length, 0);
+    for (let i = 0; i < sortie.length - R && poids > 90000; i++) {
+      if (sortie[i].role === 'user') continue;
+      const av = sortie[i].text.length;
+      if (av <= 160) continue;
+      sortie[i] = { role: 'assistant', text: sortie[i].text.slice(0, 150) + ' [...]' };
+      poids -= av - sortie[i].text.length;
+    }
+    return sortie;
   } catch (_) { return []; }
 }
 
