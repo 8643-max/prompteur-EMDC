@@ -2636,12 +2636,13 @@ function escapeHtml(s) {
    nouveaux résultats (utile sur mobile où le panneau est masqué). */
 const _resultatsVus = new Set();
 function _kindFromUrl(u) {
-  const base = String(u).split('?')[0].toLowerCase();
-  if (/\.(mp4|webm|mov|m4v)$/.test(base)) return 'video';
-  if (/\.(mp3|wav|ogg|m4a|aac|flac)$/.test(base)) return 'audio';
-  if (/\.(png|jpe?g|webp|gif|avif)$/.test(base)) return 'image';
-  if (/\.(docx|xlsx|pptx|pdf|doc|xls|ppt)$/.test(base)) return 'doc';
-  return 'unk';
+  const s = String(u).split('?')[0].toLowerCase();
+  if (/\.(mp4|webm|mov)$/.test(s)) return 'video';
+  if (/\.(mp3|wav|ogg|m4a)$/.test(s)) return 'audio';
+  if (/\.(png|jpe?g|webp|gif)$/.test(s)) return 'image';
+  if (/\.(docx|xlsx|pptx|pdf|doc|xls|ppt)$/.test(s)) return 'doc';
+  if (/replicate\.delivery/.test(s)) return 'image'; // sorties image sans extension
+  return null;
 }
 function majBadgeResultats() {
   const n = _resultatsVus.size;
@@ -2680,35 +2681,9 @@ function mirrorMediaToPanel(text) {
   const push = re => { while ((m = re.exec(text))) urls.add(m[1]); };
   push(/!\[[^\]\n]*\]\((https?:\/\/[^\s)]+)\)/g);
   push(/\[[^\]\n]+\]\((https?:\/\/[^\s)]+)\)/g);
-  push(/(https?:\/\/[^\s)"'<>]+\.(?:png|jpe?g|webp|gif|avif|mp4|webm|mov|m4v|mp3|wav|ogg|m4a|aac|flac|docx|xlsx|pptx|pdf|doc|xls|ppt)(?:\?[^\s)"'<>]*)?)/gi);
+  push(/(https?:\/\/[^\s)"'<>]+\.(?:png|jpe?g|webp|gif|mp4|webm|mp3|wav|ogg|m4a|docx|xlsx|pptx|pdf)(?:\?[^\s)"'<>]*)?)/gi);
   push(/(https?:\/\/replicate\.delivery\/[^\s)"'<>]+)/g);
-  for (const u of urls) {
-    const k = _kindFromUrl(u);
-    if (k === 'unk') { _classerMediaAsync(u); }
-    else if (k) { ajouterAuPanneauResultats(u, k, _labelForUrl(u)); }
-  }
-}
-function _labelForUrl(u){ try { const t=decodeURIComponent(String(u).split('?')[0]).split('/').pop(); return t? t.slice(-45) : String(u).slice(-45); } catch(e){ return String(u).slice(-45); } }
-function _classerMediaAsync(u){
-  if (_resultatsVus.has(u)) return;
-  _resultatsVus.add(u);
-  const finir = (k) => { if (k) ajouterAuPanneauResultats(u, k, _labelForUrl(u)); else ajouterAuPanneauResultats(u, 'doc', _labelForUrl(u)); };
-  // Essaye d'abord un HEAD (léger) pour le Content-Type.
-  fetch(u, { method: 'HEAD' }).then(r => {
-    const ct = (r.headers.get('content-type')||'').toLowerCase();
-    if (ct.startsWith('video/')) return finir('video');
-    if (ct.startsWith('audio/')) return finir('audio');
-    if (ct.startsWith('image/')) return finir('image');
-    if (ct.includes('pdf')) return finir('doc');
-    // Pas de type fiable au HEAD : on tente un GET partiel via Range pour lire l'en-tête.
-    return fetch(u, { method: 'GET', headers: { Range: 'bytes=0-0' } }).then(r2 => {
-      const ct2 = (r2.headers.get('content-type')||'').toLowerCase();
-      if (ct2.startsWith('video/')) return finir('video');
-      if (ct2.startsWith('audio/')) return finir('audio');
-      if (ct2.startsWith('image/')) return finir('image');
-      return finir(null); // type inconnu → carte de téléchargement générique
-    }).catch(() => finir(null));
-  }).catch(() => finir(null));
+  for (const u of urls) { const k = _kindFromUrl(u); if (k) ajouterAuPanneauResultats(u, k); }
 }
 
 /* ── Annuler la derniere action de l agent ─────────────────────────
@@ -5602,8 +5577,11 @@ async function submitSupaAuth() {
       await afterSupaAuth(data.user);
     }
   } catch(e) {
-    showSupaError(authErrorFr(e.message));
+    // switchAuthTab se termine par showSupaError('') : il EFFACE le message.
+    // On remet donc le bouton d'abord, et on affiche l'erreur APRES — sinon
+    // elle disparait dans la meme fraction de seconde et l'ecran semble mort.
     if (btn) { btn.disabled = false; switchAuthTab(_supaMode); }
+    showSupaError(authErrorFr(e.message));
   }
 }
 
