@@ -5647,8 +5647,11 @@ async function submitSupaAuth() {
       await afterSupaAuth(data.user);
     }
   } catch(e) {
-    showSupaError(authErrorFr(e.message));
+    // switchAuthTab se termine par showSupaError('') : il EFFACE le message.
+    // On remet donc le bouton d'abord, et on affiche l'erreur APRES — sinon
+    // elle disparait dans la meme fraction de seconde et l'ecran semble mort.
     if (btn) { btn.disabled = false; switchAuthTab(_supaMode); }
+    showSupaError(authErrorFr(e.message));
   }
 }
 
