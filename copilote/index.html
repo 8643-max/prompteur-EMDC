@@ -2636,13 +2636,12 @@ function escapeHtml(s) {
    nouveaux résultats (utile sur mobile où le panneau est masqué). */
 const _resultatsVus = new Set();
 function _kindFromUrl(u) {
-  const s = String(u).split('?')[0].toLowerCase();
-  if (/\.(mp4|webm|mov)$/.test(s)) return 'video';
-  if (/\.(mp3|wav|ogg|m4a)$/.test(s)) return 'audio';
-  if (/\.(png|jpe?g|webp|gif)$/.test(s)) return 'image';
-  if (/\.(docx|xlsx|pptx|pdf|doc|xls|ppt)$/.test(s)) return 'doc';
-  if (/replicate\.delivery/.test(s)) return 'image'; // sorties image sans extension
-  return null;
+  const base = String(u).split('?')[0].toLowerCase();
+  if (/\.(mp4|webm|mov|m4v)$/.test(base)) return 'video';
+  if (/\.(mp3|wav|ogg|m4a|aac|flac)$/.test(base)) return 'audio';
+  if (/\.(png|jpe?g|webp|gif|avif)$/.test(base)) return 'image';
+  if (/\.(docx|xlsx|pptx|pdf|doc|xls|ppt)$/.test(base)) return 'doc';
+  return 'unk';
 }
 function majBadgeResultats() {
   const n = _resultatsVus.size;
@@ -2655,21 +2654,66 @@ function majBadgeResultats() {
     } else if (bd) bd.remove();
   });
 }
+function ouvrirApercuPlein(el) {
+  // Ouvre un aperçu agrandi (image / PDF / web) DANS l'application, jamais dans un onglet séparé.
+  var url = (el && el.getAttribute && el.getAttribute('data-url')) ? el.getAttribute('data-url') : el;
+  if (!url) return;
+  var vieux = document.getElementById('overlay-aprecu');
+  if (vieux) vieux.remove();
+  var ov = document.createElement('div');
+  ov.id = 'overlay-aprecu';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(8,10,14,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px';
+  ov.innerHTML =
+    '<div style="position:absolute;top:14px;right:18px;display:flex;gap:10px;z-index:2">' +
+    '<a href="' + url + '" target="_blank" rel="noopener" style="color:#d4af37;font-size:13px;text-decoration:none;background:#1b2330;padding:6px 12px;border-radius:7px">↗ Ouvrir</a>' +
+    '<button onclick="fermerApercuPlein()" style="background:#1b2330;color:#fff;border:1px solid #2a3446;border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer;padding:0">✕</button>' +
+    '</div>' +
+    '<div style="max-width:94vw;max-height:90vh;display:flex;align-items:center;justify-content:center;background:#0d1117;border:1px solid #2a3446;border-radius:10px;overflow:auto">' +
+    '<img src="' + url + '" style="max-width:94vw;max-height:90vh;object-fit:contain">' +
+    '</div>';
+  document.body.appendChild(ov);
+}
+function fermerApercuPlein() {
+  var ov = document.getElementById('overlay-aprecu');
+  if (ov) ov.remove();
+}
+
+function _apercuIntegre(url, kind) {
+  // construit le mini-aperçu affiché DANS le panneau (jamais d'onglet séparé)
+  const base = String(url).split('?')[0].toLowerCase();
+  if (kind === 'video') return '<video src="' + url + '" controls preload="metadata" style="width:100%;display:block;max-height:50vh;background:#000"></video>';
+  if (kind === 'audio') return '<div style="padding:8px 10px"><audio src="' + url + '" controls style="width:100%"></audio></div>';
+  if (kind === 'image') return '<a href="' + url + '" class="apercu-lien" data-url="' + url + '" onclick="ouvrirApercuPlein(this);return false"><img src="' + url + '" style="width:100%;display:block;max-height:55vh;object-fit:contain" loading="lazy"></a>';
+  // pdf / doc / web : un mini-navigateur (iframe) dans le panneau
+  let src = url;
+  if (/.(docx|xlsx|pptx|pdf)$/.test(base)) {
+    // visionneuse Google pour Office & PDF (fonctionne pour des URLs publiques)
+    src = 'https://docs.google.com/gview?url=' + encodeURIComponent(url) + '&embedded=true';
+  }
+  return '<div class="mini-nav" style="position:relative;padding:8px 10px">'
+    + '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">'
+    + '<span style="font-size:11px;opacity:.7">🔎 Aperçu intégré</span>'
+    + '<a href="' + url + '" target="_blank" rel="noopener" style="font-size:11px;color:var(--gold,#d4af37);text-decoration:none">↗ Ouvrir en plein</a>'
+    + '</div>'
+    + '<iframe src="' + src + '" class="mini-nav-frame" style="width:100%;height:44vh;border:1px solid var(--border,#2a3446);border-radius:8px;background:#fff" loading="lazy"></iframe>'
+    + '</div>';
+}
+
 function ajouterAuPanneauResultats(url, kind, label) {
   if (!url || _resultatsVus.has(url)) return;
   _resultatsVus.add(url);
   const body = document.querySelector('.right-panel-body'); if (!body) return;
   const empty = document.getElementById('preview-empty'); if (empty) empty.style.display = 'none';
   const card = document.createElement('div');
-  card.style.cssText = 'background:var(--bg-elevated,#141a24);border:1px solid var(--border,#2a3446);border-radius:12px;overflow:hidden';
+  card.style.cssText = 'background:var(--bg-elevated,#141a24);border:1px solid var(--border,#2a3446);border-radius:12px;overflow:hidden;margin-bottom:10px';
   const ts = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const head = (ic, t) => '<div style="padding:8px 10px;font-size:11px;display:flex;justify-content:space-between;opacity:.75"><span>' + ic + ' ' + escapeHtml(t || '') + '</span><span>' + ts + '</span></div>';
   const dl = '<div style="padding:8px 10px"><a href="' + url + '" download target="_blank" rel="noopener" style="color:var(--gold,#d4af37);font-size:12px;text-decoration:none">⬇ Télécharger</a></div>';
-  let inner;
-  if (kind === 'image') inner = head('🖼️', label || 'Image') + '<a href="' + url + '" target="_blank" rel="noopener"><img src="' + url + '" style="width:100%;display:block" loading="lazy"></a>' + dl;
-  else if (kind === 'video') inner = head('🎬', label || 'Vidéo') + '<video src="' + url + '" controls preload="metadata" style="width:100%;display:block"></video>' + dl;
-  else if (kind === 'audio') inner = head('🎙️', label || 'Audio') + '<div style="padding:8px 10px"><audio src="' + url + '" controls style="width:100%"></audio></div>' + dl;
-  else inner = head('📄', label || 'Document') + dl;
+  const ic = kind === 'image' ? '🖼️' : kind === 'video' ? '🎬' : kind === 'audio' ? '🎙️' : '📄';
+  const titre = label || (kind === 'image' ? 'Image' : kind === 'video' ? 'Vidéo' : kind === 'audio' ? 'Audio' : 'Document');
+  let inner = head(ic, titre);
+  inner += _apercuIntegre(url, kind);
+  inner += dl;
   card.innerHTML = inner;
   const rc = document.getElementById('result-card');
   body.insertBefore(card, (rc && rc.nextSibling) ? rc.nextSibling : body.firstChild);
@@ -2681,9 +2725,35 @@ function mirrorMediaToPanel(text) {
   const push = re => { while ((m = re.exec(text))) urls.add(m[1]); };
   push(/!\[[^\]\n]*\]\((https?:\/\/[^\s)]+)\)/g);
   push(/\[[^\]\n]+\]\((https?:\/\/[^\s)]+)\)/g);
-  push(/(https?:\/\/[^\s)"'<>]+\.(?:png|jpe?g|webp|gif|mp4|webm|mp3|wav|ogg|m4a|docx|xlsx|pptx|pdf)(?:\?[^\s)"'<>]*)?)/gi);
+  push(/(https?:\/\/[^\s)"'<>]+\.(?:png|jpe?g|webp|gif|avif|mp4|webm|mov|m4v|mp3|wav|ogg|m4a|aac|flac|docx|xlsx|pptx|pdf|doc|xls|ppt)(?:\?[^\s)"'<>]*)?)/gi);
   push(/(https?:\/\/replicate\.delivery\/[^\s)"'<>]+)/g);
-  for (const u of urls) { const k = _kindFromUrl(u); if (k) ajouterAuPanneauResultats(u, k); }
+  for (const u of urls) {
+    const k = _kindFromUrl(u);
+    if (k === 'unk') { _classerMediaAsync(u); }
+    else if (k) { ajouterAuPanneauResultats(u, k, _labelForUrl(u)); }
+  }
+}
+function _labelForUrl(u){ try { const t=decodeURIComponent(String(u).split('?')[0]).split('/').pop(); return t? t.slice(-45) : String(u).slice(-45); } catch(e){ return String(u).slice(-45); } }
+function _classerMediaAsync(u){
+  if (_resultatsVus.has(u)) return;
+  _resultatsVus.add(u);
+  const finir = (k) => { if (k) ajouterAuPanneauResultats(u, k, _labelForUrl(u)); else ajouterAuPanneauResultats(u, 'doc', _labelForUrl(u)); };
+  // Essaye d'abord un HEAD (léger) pour le Content-Type.
+  fetch(u, { method: 'HEAD' }).then(r => {
+    const ct = (r.headers.get('content-type')||'').toLowerCase();
+    if (ct.startsWith('video/')) return finir('video');
+    if (ct.startsWith('audio/')) return finir('audio');
+    if (ct.startsWith('image/')) return finir('image');
+    if (ct.includes('pdf')) return finir('doc');
+    // Pas de type fiable au HEAD : on tente un GET partiel via Range pour lire l'en-tête.
+    return fetch(u, { method: 'GET', headers: { Range: 'bytes=0-0' } }).then(r2 => {
+      const ct2 = (r2.headers.get('content-type')||'').toLowerCase();
+      if (ct2.startsWith('video/')) return finir('video');
+      if (ct2.startsWith('audio/')) return finir('audio');
+      if (ct2.startsWith('image/')) return finir('image');
+      return finir(null); // type inconnu → carte de téléchargement générique
+    }).catch(() => finir(null));
+  }).catch(() => finir(null));
 }
 
 /* ── Annuler la derniere action de l agent ─────────────────────────
@@ -5577,11 +5647,8 @@ async function submitSupaAuth() {
       await afterSupaAuth(data.user);
     }
   } catch(e) {
-    // switchAuthTab se termine par showSupaError('') : il EFFACE le message.
-    // On remet donc le bouton d'abord, et on affiche l'erreur APRES — sinon
-    // elle disparait dans la meme fraction de seconde et l'ecran semble mort.
-    if (btn) { btn.disabled = false; switchAuthTab(_supaMode); }
     showSupaError(authErrorFr(e.message));
+    if (btn) { btn.disabled = false; switchAuthTab(_supaMode); }
   }
 }
 
