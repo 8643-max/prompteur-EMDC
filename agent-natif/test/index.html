@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Essai P0 — Agent natif EMDC Copilote</title>
+<title>Essai P0 — EMDC Nexus</title>
 <style>
   :root{
     --bg:#0A1128;--surface:#0F1A35;--elev:#152040;--border:rgba(212,175,55,.2);
@@ -40,14 +40,14 @@
 </head>
 <body>
 <header>
-  <h1>⚡ Essai P0 — Agent natif EMDC Copilote</h1>
+  <h1>⚡ Essai P0 — EMDC Nexus</h1>
   <span class="etat" id="etat">⏳ non testé</span>
-  <div class="sub">Cette page parle directement au <b>cœur natif</b> (endpoint /conversation), sans n8n. Elle sert à valider l'étape P0 avant de brancher l'interface complète.</div>
+  <div class="sub">Cette page parle directement au <b>cœur natif EMDC Nexus</b> (endpoint /conversation), sans n8n. Elle sert à valider l'étape P0 avant de brancher l'interface complète.</div>
 </header>
 <main>
   <div class="config">
     <label>Adresse du cœur natif</label>
-    <input id="url" value="http://localhost:3100" placeholder="http://localhost:3100 ou https://agent.emdcconsulting.com">
+    <input id="url" value="https://nexus.emdcconsulting.com" placeholder="https://nexus.emdcconsulting.com">
     <div class="row">
       <div><label>Secret de signature (optionnel P0)</label><input id="secret" value="" placeholder="AGENT_SIGNING_SECRET si configuré"></div>
       <div><label>Profil client (optionnel)</label><input id="profil" value="" placeholder="ex: restaurateur à Dakar"></div>
@@ -59,7 +59,7 @@
   </div>
   <div id="chat"></div>
   <div class="saisie">
-    <input id="question" placeholder="Écrivez votre question au cœur natif…" onkeydown="if(event.key==='Enter')envoyer()">
+    <input id="question" placeholder="Écrivez votre question à EMDC Nexus…" onkeydown="if(event.key==='Enter')envoyer()">
     <button class="btn" id="btn-envoyer" onclick="envoyer()">Envoyer</button>
   </div>
   <div class="detail" id="detail"></div>
@@ -74,7 +74,7 @@ const etat = $('etat');
 function ajouter(role, texte) {
   const d = document.createElement('div');
   d.className = 'msg ' + role;
-  const qui = role === 'user' ? 'Vous' : (role === 'ia' ? 'EMDC Copilote' : 'Système');
+  const qui = role === 'user' ? 'Vous' : (role === 'ia' ? 'EMDC Nexus' : 'Système');
   d.innerHTML = '<span class="qui">' + qui + '</span>' + texte.replace(/</g, '&lt;');
   chat.appendChild(d);
   chat.scrollTop = chat.scrollHeight;
@@ -111,7 +111,7 @@ async function tester() {
   } catch (e) {
     etat.textContent = '❌ injoignable — ' + e.message;
     etat.className = 'etat nok';
-    $('detail').innerHTML = "Le cœur natif ne répond pas à cette adresse. S'il n'est pas encore déployé, lancez-le en local (node src/server.js) ou déployez le conteneur.";
+    $('detail').innerHTML = "Le cœur natif ne répond pas à cette adresse. Vérifiez le DNS (nexus.emdcconsulting.com → 91.107.212.88) puis réessayez.";
   }
 }
 
@@ -150,7 +150,7 @@ async function envoyer() {
 
 $('btn-sante').onclick = tester;
 $('btn-effacer').onclick = () => { chat.innerHTML = ''; $('detail').innerHTML = ''; };
-ajouter('sys', "Bienvenue sur la page d'essai de l'étape P0. Renseignez l'adresse du cœur natif puis cliquez « Tester la connexion ». Si le cœur n'est pas encore déployé, lancez-le en local sur le VPS et testez.");
+ajouter('sys', "Bienvenue sur la page d'essai de l'étape P0. Renseignez l'adresse d'EMDC Nexus puis cliquez « Tester la connexion ».");
 </script>
 </body>
 </html>
