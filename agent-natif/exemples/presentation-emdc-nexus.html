@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EMDC Nexus — Présentation</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,sans-serif;background:#000;overflow:hidden}
+  .scene{width:100vw;height:100vh;position:relative}
+  .diapo{position:absolute;inset:0;display:none;padding:7vh 8vw;background:#0A1128;color:#F0EAD6}
+  .diapo.active{display:flex;flex-direction:column;justify-content:center}
+  .diapo .num{position:absolute;bottom:4vh;right:4vw;font-size:13px;color:#F0CF6B;opacity:.6}
+  h1{font-size:clamp(30px,6vw,64px);letter-spacing:-.02em;margin-bottom:8px}
+  .surtitre{font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:#D4AF37;font-weight:700;margin-bottom:10px}
+  .sous_titre{font-size:clamp(16px,2.4vw,26px);color:#F0CF6B;opacity:.85}
+  h2{font-size:clamp(24px,4vw,44px);color:#D4AF37;margin-bottom:14px}
+  .accroche{font-size:clamp(15px,1.8vw,20px);color:#F0CF6B;margin-bottom:22px;opacity:.9}
+  .items{list-style:none;display:flex;flex-direction:column;gap:14px}
+  .items li{font-size:clamp(15px,1.9vw,22px);display:flex;gap:12px;align-items:flex-start}
+  .items li::before{content:"•";color:#D4AF37;font-weight:800;font-size:1.2em}
+  .chiffres{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:18px}
+  .chiffre{background:#0F1A35;border:1px solid rgba(212,175,55,.3);border-radius:14px;padding:22px;text-align:center}
+  .chiffre .valeur{display:block;font-size:clamp(28px,5vw,52px);font-weight:800;color:#D4AF37}
+  .chiffre .libelle{display:block;font-size:14px;margin-top:6px}
+  .chiffre .detail{display:block;font-size:12px;opacity:.7;margin-top:4px}
+  .touches{position:fixed;bottom:4vh;left:4vw;font-size:12px;color:#fff;opacity:.5;z-index:9;font-family:system-ui,sans-serif}
+</style></head><body>
+<div class="touches">← → pour naviguer</div>
+<div class="scene">
+<section class="diapo active"><div><p class="surtitre">EMDC CONSULTING</p><h1>EMDC Nexus</h1><p class="sous_titre">L'assistant IA nouvelle génération</p><span class="num">1</span></div></section>
+<section class="diapo"><div><h2>Pourquoi Nexus ?</h2><ul class="items"><li>Cerveau interchangeable : DeepSeek, Claude, Mistral…</li><li>Outils natifs, sans n8n</li><li>Créations dignes des meilleurs studios</li></ul><span class="num">2</span></div></section>
+<section class="diapo"><div><h2>En chiffres</h2><div class="chiffres"><div class="chiffre"><span class="valeur">30+</span><span class="libelle">workflows remplacés</span></div><div class="chiffre"><span class="valeur">4</span><span class="libelle">habillages maison</span></div><div class="chiffre"><span class="valeur">100%</span><span class="libelle">natif</span></div></div><span class="num">3</span></div></section>
+<section class="diapo"><div><h1>Prêt à conquérir le marché</h1><p class="sous_titre" style="margin-top:14px">EMDC Consulting</p><span class="num">4</span></div></section>
+</div>
+<script>
+let i=0;const ds=document.querySelectorAll('.diapo');function aller(n){ds[i].classList.remove('active');i=Math.max(0,Math.min(ds.length-1,n));ds[i].classList.add('active');}
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')aller(i+1);if(e.key==='ArrowLeft')aller(i-1);});
+</script></body></html>
