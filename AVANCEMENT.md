@@ -71,6 +71,13 @@
 
 ## 🛟 PASSATION — pour le nouveau Gardien (LIRE AVANT D'AGIR)
 
+### ⚠️ Deux « connexions » à ne pas confondre
+- **Pages Connexion/Configuration de NEXUS** (demandées par ElHadj) = identification des CLIENTS
+  sur Nexus (comptes Supabase Auth) + écrans de réglages du Copilote. **À CONSTRUIRE (P2).**
+- **Page de connexion du GARDIEN** (guichet admin emdc-devops) = déjà protégée par antibruteforce.
+  **Rien à voir avec Nexus.** (memo-chantier-3-proteger-la-page-de-connexion)
+- Quand ElHadj dit « j'aimerais que Nexus ait une page de connexion », il s'agit de la **1ère**.
+
 ### Comment ElHadj déploie
 - Il travaille depuis son **terminal PowerShell Windows**, jamais en ouvrant le VPS.
 - Alias SSH : `emdc` → 91.107.212.88, port 2222, clé `id_ed25519_emdc` (auto, sans phrase).
