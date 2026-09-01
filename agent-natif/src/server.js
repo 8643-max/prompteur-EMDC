@@ -55,6 +55,21 @@ function verifierSignature(req, res, next) {
   next();
 }
 
+// ── Route de signature : le front demande une signature HMAC fraîche avant
+//    chaque écriture. Le secret AGENT_SIGNING_SECRET ne quitte jamais le
+//    serveur ; seul le couple « timestamp:empreinte » est renvoyé. ──
+app.get('/signature', (req, res) => {
+  const secretSign = CFG.AGENT_SIGNING_SECRET;
+  if (!secretSign) return res.status(503).json({ erreur: 'Signature non configurée.' });
+  try {
+    const ts = Math.floor(Date.now() / 1000);
+    const hex = crypto.createHmac('sha256', secretSign).update(String(ts)).digest('hex');
+    res.json({ signature: ts + ':' + hex });
+  } catch (e) {
+    res.status(500).json({ erreur: String(e.message || e) });
+  }
+});
+
 // Console d'essai à la racine
 app.get('/', (req, res) => res.type('html').send(PAGE_INTERFACE));
 
