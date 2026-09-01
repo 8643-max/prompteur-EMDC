@@ -4,12 +4,14 @@
 //
 // Deux sources, dans l'ordre de priorité :
 //   1. un fichier connections.json sur le volume (géré depuis l'admin),
-//   2. les variables d'environnement (.env du conteneur).
-// Pour le P0, on lit la clé LLM et les accès Supabase depuis l'env ; le fichier
-// JSON laissera ensuite l'administrateur ajouter des services (Replicate,
-// Stripe, Google…) sans redéployer le conteneur.
+//   2. les variables d'environnement (.env du conteneur) — TOUTES les variables,
+//      pas seulement celles déclarées dans config.js.
+//
+// Ainsi, ajouter un nouveau service (Replicate, ElevenLabs, Stripe…) se fait en
+// posant une variable d'env : le coffre la rend immédiatement disponible, sans
+// toucher au code.
 
-import { promises as fsp, existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { CFG } from './config.js';
@@ -18,10 +20,6 @@ const APP = path.dirname(path.dirname(fileURLToPath(import.meta.url))); // racin
 const DATA_DIR = process.env.DATA_DIR || path.join(APP, 'data');
 const CONN_FILE = path.join(DATA_DIR, 'connections.json');
 
-// Reprend, s'il existe, un connections.json déjà chiffré du Gardien (pour une
-// reprise en douceur) ; sinon fichier clair local. On n'exige pas ici le
-// chiffrement pour rester simple au P0, mais la convention est : ce fichier vit
-// sur un volume appartenant au serveur, en lecture seule pour l'application.
 function lireConnections() {
   try {
     if (existsSync(CONN_FILE)) {
@@ -35,10 +33,15 @@ function lireConnections() {
   return {};
 }
 
-/** Lit la valeur d'un secret, depuis le coffre puis depuis l'environnement. */
+/**
+ * Lit la valeur d'un secret : fichier connections.json d'abord, puis variable
+ * d'environnement (process.env), puis config (CFG) en dernier recours.
+ */
 export function secret(name) {
   const coffre = lireConnections();
   if (coffre[name] != null && String(coffre[name]) !== '') return String(coffre[name]);
+  const env = process.env[name];
+  if (env != null && String(env) !== '') return String(env);
   return CFG[name] || '';
 }
 
