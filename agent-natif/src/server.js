@@ -12,6 +12,7 @@ import { sbConfigured, sbRead } from './supabase.js';
 import { secret, estDefini, apercu, enregistrerCles } from './coffre.js';
 import { testerCerveau } from './cerveau.js';
 import { executerStudio } from './studio.js';
+import { rendreDocument, rendrePresentation } from './documents.js';
 
 const app = express();
 app.use(express.json({ limit: '4mb' }));
@@ -133,7 +134,6 @@ async function sauver(){
 etatCles();
 </script></body></html>`;
 
-// État des clés du coffre (valeurs masquées) — sans code requis
 app.get('/coffre/etat', (req, res) => {
   const cles = {};
   for (const nom of ['REPLICATE_API_KEY', 'ELEVENLABS_API_KEY', 'DEEPSEEK_API_KEY', 'LLM_API_KEY']) {
@@ -142,7 +142,6 @@ app.get('/coffre/etat', (req, res) => {
   res.json({ ok: true, cles });
 });
 
-// Enregistrement des clés — code d'administration requis
 app.post('/coffre', (req, res) => {
   const { code = '', cles = {} } = req.body || {};
   const attendu = process.env.NEXUS_ADMIN_CODE || '';
@@ -152,7 +151,6 @@ app.post('/coffre', (req, res) => {
   res.json(r);
 });
 
-// La page de configuration
 app.get('/coffre', (req, res) => res.type('html').send(PAGE_COFFRE));
 
 app.get('/sante', (req, res) => {
@@ -162,11 +160,11 @@ app.get('/sante', (req, res) => {
     cerveau: CFG.LLM_FOURNISSEUR,
     supabase: sbConfigured(),
     studio: { replicate: estDefini('REPLICATE_API_KEY'), elevenlabs: estDefini('ELEVENLABS_API_KEY') },
+    documents: true,
     coffre: { llmCle: estDefini('LLM_API_KEY'), supabase: estDefini('SUPABASE_DB_URL') },
   });
 });
 
-// Diagnostic détaillé
 app.get('/diagnostic', async (req, res) => {
   const manquantes = missingCritical();
   const testCerveau = await testerCerveau();
@@ -176,10 +174,10 @@ app.get('/diagnostic', async (req, res) => {
     cerveau: testCerveau,
     supabaseConfiguree: sbConfigured(),
     studio: { replicate: estDefini('REPLICATE_API_KEY'), elevenlabs: estDefini('ELEVENLABS_API_KEY') },
+    documents: true,
   });
 });
 
-// Endpoint principal : conversation
 app.post('/conversation', verifierSignature, async (req, res) => {
   try {
     const { sessionId, historique = [], profil = '', question = '' } = req.body || {};
@@ -197,7 +195,6 @@ app.post('/conversation', verifierSignature, async (req, res) => {
   }
 });
 
-// Endpoint Studio visuel & voix
 app.post('/studio', verifierSignature, async (req, res) => {
   try {
     const d = req.body || {};
@@ -209,7 +206,30 @@ app.post('/studio', verifierSignature, async (req, res) => {
   }
 });
 
-// Exemple de lecture protégée
+// Endpoint document soigné : reçoit la spec JSON, rend le HTML.
+app.post('/document', verifierSignature, (req, res) => {
+  try {
+    const spec = req.body || {};
+    if (!spec.titre) return res.status(400).json({ erreur: 'Le champ « titre » est requis.' });
+    const html = rendreDocument(spec);
+    res.type('html').send(html);
+  } catch (e) {
+    res.status(500).json({ erreur: String(e.message || e) });
+  }
+});
+
+// Endpoint présentation : reçoit la spec JSON, rend le HTML projetable.
+app.post('/presentation', verifierSignature, (req, res) => {
+  try {
+    const spec = req.body || {};
+    if (!spec.titre) return res.status(400).json({ erreur: 'Le champ « titre » est requis.' });
+    const html = rendrePresentation(spec);
+    res.type('html').send(html);
+  } catch (e) {
+    res.status(500).json({ erreur: String(e.message || e) });
+  }
+});
+
 app.get('/session/:id', verifierSignature, async (req, res) => {
   try {
     const id = String(req.params.id || '');
