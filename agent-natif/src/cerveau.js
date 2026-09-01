@@ -1,14 +1,16 @@
 // Le « cerveau » du cœur de l'agent natif — d'où viennent les réponses.
 //
 // Même principe que le Gardien d'EMDC : un cerveau interchangeable. Le cœur
-// appelle « appelerCerveau(messages, options) » sans avoir à savoir à qui il
-// parle. Deux familles de fournisseurs :
+// appelle « parler(...) » sans avoir à savoir à qui il parle. Deux familles :
 //   • anthropic  — Claude en natif (réflexion, cache de prompt, vision fine).
 //   • openai     — le dialecte commun à presque tous les autres (DeepSeek, Groq,
 //                  OpenRouter, Mistral, OpenAI), traduit dans les deux sens.
 //
 // Par défaut par configuration : DeepSeek (très bon marché pour une app
 // multi-clients grand public, comme adopté par EMDC Copilote).
+
+import { CFG } from './config.js';
+import { secret } from './coffre.js';
 
 export const FOURNISSEURS = {
   deepseek: {
@@ -45,18 +47,10 @@ export const FOURNISSEURS = {
   },
 };
 
-export function champCle(id) {
-  // Le P0 centralise la clé dans LLM_API_KEY (env). L'extension multi-clés par
-  // service est prévue mais pas encore active : on reste simple d'abord.
-  return 'LLM_API_KEY';
-}
-
 /** Réglage courant du cerveau. */
 export function cerveauActuel() {
-  const { CFG } = await0(() => import('./config.js'));
   const id = CFG.LLM_FOURNISSEUR || 'deepseek';
   const f = FOURNISSEURS[id] || FOURNISSEURS.deepseek;
-  const { secret } = await0(() => import('./coffre.js'));
   return {
     fournisseur: id,
     dialecte: f.dialecte,
@@ -66,11 +60,6 @@ export function cerveauActuel() {
     capacite: f.capacite || 'normale',
   };
 }
-
-// Petit adaptateur : les imports statiques ci-dessus sont simplifiés — on
-// importe réellement en tête de fichier et cette fonction n'est pas nécessaire.
-// Conservée pour la forme, elle ne sert pas en pratique.
-function await0() { throw new Error('non utilisé'); }
 
 /* ── Traduction vers le dialecte OpenAI ── */
 
@@ -91,7 +80,7 @@ export function messagesVersOpenAI(messages, system) {
   return out;
 }
 
-/** Réponse du fournisseur différente (dialecte openai) → forme commune. */
+/** Réponse d'un fournisseur, ramenée à une forme commune. */
 export function reponseCommune(d) {
   const msg = d?.choices?.[0]?.message || {};
   return {
@@ -103,9 +92,9 @@ export function reponseCommune(d) {
 }
 
 /**
- * Un tour de parole du cerveau. Rend toujours { contenu, raisonnement, stop,
- * usage } — quel que soit le fournisseur. C'est la seule fonction à laquelle
- * l'orchestrateur fait appel.
+ * Un tour de parole du cerveau. Rend toujours
+ * { contenu, raisonnement, stop, usage } — quel que soit le fournisseur.
+ * Seule fonction à laquelle l'orchestrateur fait appel.
  */
 export async function parler({ system = '', messages = [], maxTokens = 4000, temperature = 0.7 }) {
   const c = cerveauActuel();
