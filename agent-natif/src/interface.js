@@ -157,8 +157,7 @@ let _sigCache=null;
 
 // Récupère une signature HMAC fraîche (timestamp:sha256) calculée côté serveur.
 // La clé AGENT_SIGNING_SECRET reste au serveur ; le navigateur ne fait que la
-// demander avant chaque écriture, avec un léger cache (5 s) pour ne pas recharger
-// inutilement.
+// demander avant chaque écriture, avec un léger cache (5 s) pour ne pas surcharger.
 async function signature(){
   if(_sigCache && (Date.now()-_sigCache.ts)<5000) return _sigCache.val;
   try{
@@ -167,6 +166,12 @@ async function signature(){
     if(d.signature){ _sigCache={ts:Date.now(),val:d.signature}; return d.signature; }
   }catch(e){}
   return '';
+}
+// En-têtes communs : Content-Type + signature de sécurité pour les écritures.
+async function entetesJson(avecSignature){
+  const h={'Content-Type':'application/json'};
+  if(avecSignature){ const s=await signature(); if(s) h['x-agente-signature']=s; }
+  return h;
 }
 async function chargerSolde(){
   try{const r=await fetch('/solde?user='+encodeURIComponent(USER));const d=await r.json();if(d.solde!=null)$('solde').textContent=Math.floor(d.solde);}catch(e){}
@@ -178,14 +183,22 @@ function setMode(btn,m){document.querySelectorAll('.mode-btn').forEach(b=>b.clas
 function choisirOutil(el){document.querySelectorAll('.tool-item').forEach(t=>t.classList.remove('active'));el.classList.add('active');$('titreOutil').textContent=el.textContent.trim();}
 function nouvelleSession(){historique=[];$('messages').innerHTML='';const w=$('welcome');w.style.display='';}
 function chip(t){$('input').value=t;envoyer();}
-
-// Retourne les en-têtes communs à toutes les écritures. Ajoute la signature de
-// sécurité si le serveur en a besoin.
-async function entetesJson(avecSignature){
-  const h={'Content-Type':'application/json'};
-  if(avecSignature){ const s=await signature(); if(s) h['x-agente-signature']=s; }
-  return h;
+function ajouter(role,texte,extra){
+  const w=$('welcome');if(w)w.style.display='none';
+  const d=document.createElement('div');d.className='msg '+role;
+  const avatar=document.createElement('div');avatar.className='msg-avatar';avatar.textContent=role==='user'?'E':'N';
+  const b=document.createElement('div');b.className='msg-bubble';b.innerHTML=texte.replace(/</g,'&lt;').replace(/\\n/g,'<br>');
+  if(extra&&extra.image){const im=document.createElement('img');im.src=extra.image;b.appendChild(im);}
+  d.appendChild(avatar);d.appendChild(b);$('messages').appendChild(d);$('messages').scrollTop=$('messages').scrollHeight;
 }
+function typeur(){
+  const d=document.createElement('div');d.className='msg assistant';
+  const av=document.createElement('div');av.className='msg-avatar';av.textContent='N';
+  const b=document.createElement('div');b.className='msg-bubble';b.innerHTML='<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+  d.appendChild(av);d.appendChild(b);$('messages').appendChild(d);$('messages').scrollTop=$('messages').scrollHeight;
+  return d;
+}
+function retirer(d){if(d&&d.parentNode)d.parentNode.removeChild(d);}
 async function envoyer(){
   const q=$('input').value.trim();if(!q)return;
   const outilActif=document.querySelector('.tool-item.active');
@@ -250,23 +263,5 @@ async function genererPresentation(q){
     const w=window.open('','_blank');if(w){w.document.write(html);w.document.close();}else ajouter('assistant',"Présentation générée — autorisez les pop-up.");
   }catch(e){retirer(t);ajouter('assistant','⚠ '+e.message);}
 }
-function ajouter(role,texte,extra){
-  const w=$('welcome');if(w)w.style.display='none';
-  const d=document.createElement('div');d.className='msg '+role;
-  const avatar=document.createElement('div');avatar.className='msg-avatar';avatar.textContent=role==='user'?'E':'N';
-  const b=document.createElement('div');b.className='msg-bubble';b.innerHTML=texte.replace(/</g,'&lt;').replace(/\\n/g,'<br>');
-  if(extra&&extra.image){const im=document.createElement('img');im.src=extra.image;b.appendChild(im);}
-  d.appendChild(avatar);d.appendChild(b);$('messages').appendChild(d);$('messages').scrollTop=$('messages').scrollHeight;
-}
-function typeur(){
-  const d=document.createElement('div');d.className='msg assistant';
-  const av=document.createElement('div');av.className='msg-avatar';av.textContent='N';
-  const b=document.createElement('div');b.className='msg-bubble';b.innerHTML='<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
-  d.appendChild(av);d.appendChild(b);$('messages').appendChild(d);$('messages').scrollTop=$('messages').scrollHeight;
-  return d;
-}
-function retirer(d){if(d&&d.parentNode)d.parentNode.removeChild(d);}
-let _x=null;
-function setMode(a){}
 etatCerveau();chargerSolde();
 </script></body></html>`;
