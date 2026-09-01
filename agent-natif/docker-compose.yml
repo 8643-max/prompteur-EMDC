@@ -1,0 +1,37 @@
+# Mise en service du cœur de l'agent natif EMDC Copilote sur le VPS.
+# À lancer depuis le dossier agent-natif du serveur (après git pull).
+#
+#   docker compose up -d --build
+#
+# Le conteneur rejoint le réseau docker `emdc` (même réseau que n8n, traefik,
+# emdc-media, emdc-devops). Il est volontairement NON exposé publiquement au
+# départ : seul l'accès interne compte pour la phase de test P0 (le front
+# l'appellera plus tard via Traefik ou un endpoint sécurisé).
+
+services:
+  agent-natif:
+    build: .
+    container_name: emdc-agent-natif
+    restart: unless-stopped
+    networks:
+      - emdc
+    env_file:
+      - .env
+    volumes:
+      # Volume de données : le coffre à clés (connections.json) et la future
+      # persistance y vivent, en dehors de l'image.
+      - agent-natif-data:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3100/sante').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  emdc:
+    external: true
+
+volumes:
+  agent-natif-data:
+    driver: local
