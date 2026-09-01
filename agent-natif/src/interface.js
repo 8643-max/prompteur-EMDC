@@ -2,8 +2,8 @@
 // Reprend la structure visuelle de l'application EMDC Copilote (copilote/index.html) :
 // fond bleu nuit, doré maison, header avec solde, sidebar d'outils, chat central,
 // modes Standard/Vision. Appelle les endpoints du cœur en même origine.
-// NOTE : page générée dans un template literal — les antislashs doivent être
-// DOUBLÉS (\\n, \\t…) pour que le navigateur reçoive le bon code.
+// NOTE : page générée dans un template literal — antislashs DOUBLÉS (\\n) et
+// APOSTROPHES à éviter dans les chaînes JS simples : utiliser des guillemets doubles.
 
 export const PAGE_INTERFACE = `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -223,7 +223,7 @@ async function genererDocument(q){
     const r=await fetch('/document',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(spec)});
     const html=await r.text();
     retirer(t);
-    const w=window.open('','_blank');if(w){w.document.write(html);w.document.close();}else ajouter('assistant','Document généré — autorisez les fenêtres pop-up pour l\'ouvrir.');
+    const w=window.open('','_blank');if(w){w.document.write(html);w.document.close();}else ajouter('assistant',"Document généré — autorisez les fenêtres pop-up pour l'ouvrir.");
   }catch(e){retirer(t);ajouter('assistant','⚠ '+e.message);}
 }
 async function genererPresentation(q){
@@ -233,7 +233,7 @@ async function genererPresentation(q){
     const r=await fetch('/presentation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(spec)});
     const html=await r.text();
     retirer(t);
-    const w=window.open('','_blank');if(w){w.document.write(html);w.document.close();}else ajouter('assistant','Présentation générée — autorisez les pop-up.');
+    const w=window.open('','_blank');if(w){w.document.write(html);w.document.close();}else ajouter('assistant',"Présentation générée — autorisez les pop-up.");
   }catch(e){retirer(t);ajouter('assistant','⚠ '+e.message);}
 }
 etatCerveau();chargerSolde();
