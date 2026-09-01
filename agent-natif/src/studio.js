@@ -19,6 +19,7 @@ const REPLICATE = 'https://api.replicate.com';
 const CLE_IMAGE = 'REPLICATE_API_KEY';
 
 // ── Modèles Replicate (versions exactes du workflow n8n d'origine) ──
+const MODELE_FLUX = 'black-forest-labs/flux-schnell';
 const MODELES_EDITION = {
   detourage:   { version: 'f74986db0355b58403ed20963af156525e2891ea3c2d499bfbfb2a28cd87c5d7', input: (i) => ({ image: i, resolution: '1024x1024' }) },
   upscale:     { version: 'b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8', input: (i) => ({ image: i, scale: 2, face_enhance: true }) },
@@ -51,10 +52,12 @@ function detecterEdition(raw) {
 }
 
 // ── Appel Replicate (lancer une prédiction) ──
-async function lancerReplicate(body, { attendre = false } = {}) {
+// Deux formes : endpoint modèle (flux-schnell, pas de version) ou endpoint
+// générique /predictions (édition/décor, exige une version).
+async function lancerReplicate(url, body, { attendre = false } = {}) {
   const cle = secret(CLE_IMAGE);
   if (!cle) throw new Error("Clé Replicate non configurée (REPLICATE_API_KEY).");
-  const r = await fetch(`${REPLICATE}/v1/predictions`, {
+  const r = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -102,7 +105,6 @@ async function rembourser(p_spend_id, p_raison = 'echec') {
 /**
  * Point d'entrée du Studio. Reçoit une demande, vérifie le solde, exécute,
  * et rend { type, url, op, cout } — ou jette une erreur claire.
- * @param {{ operation?: string, prompt?: string, image_url?: string, background_url?: string, voice_id?: string, user_id: string, session_id?: string }} demande
  */
 export async function executerStudio(demande) {
   const { operation = 'image', prompt = '', image_url = '', background_url = '', voice_id = '', user_id, session_id = null } = demande;
@@ -134,7 +136,10 @@ export async function executerStudio(demande) {
 }
 
 async function faireImage({ prompt, spendId }) {
-  const d = await lancerReplicate({ input: { prompt } });
+  const d = await lancerReplicate(
+    `${REPLICATE}/v1/models/${MODELE_FLUX}/predictions`,
+    { input: { prompt } }
+  );
   const rendu = await attendreRendu(d.urls?.get, 90000);
   const url = rendu.output?.[0] || rendu.output;
   if (!url) throw new Error('Image générée sans URL.');
@@ -160,7 +165,7 @@ async function faireEditionDecor({ type, prompt, image_url, background_url, spen
     const m = MODELES_EDITION[op];
     body = { version: m.version, input: m.input(image_url, prompt) };
   }
-  const d = await lancerReplicate(body, { attendre: true });
+  const d = await lancerReplicate(`${REPLICATE}/v1/predictions`, body, { attendre: true });
   const rendu = d.status === 'succeeded' ? d : await attendreRendu(d.urls?.get, 120000);
   const url = rendu.output?.[0] || rendu.output;
   if (!url) throw new Error('Édition sans URL de rendu.');
@@ -179,8 +184,6 @@ async function faireVoix({ prompt, voice_id, spendId }) {
   });
   if (!r.ok) throw new Error(`ElevenLabs ${r.status} : ${(await r.text()).slice(0, 150)}`);
   const buf = Buffer.from(await r.arrayBuffer());
-  // Note : la voix générée est renvoyée en binaire — l'hébergement (Supabase Storage)
-  // sera branché à la prochaine itération ; ici on rend un objet avec la taille.
   await confirmer(spendId);
   return { ok: true, type: 'voix', op: 'voix', octets: buf.length, cout: COUTS.voix };
 }
