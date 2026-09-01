@@ -11,6 +11,7 @@ import { traiterTour, construireMessages } from './orchestrateur.js';
 import { sbConfigured, sbRead } from './supabase.js';
 import { secret, estDefini } from './coffre.js';
 import { testerCerveau } from './cerveau.js';
+import { executerStudio } from './studio.js';
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -63,6 +64,7 @@ app.get('/sante', (req, res) => {
     service: 'emdc-agent-natif',
     cerveau: CFG.LLM_FOURNISSEUR,
     supabase: sbConfigured(),
+    studio: { replicate: estDefini('REPLICATE_API_KEY'), elevenlabs: estDefini('ELEVENLABS_API_KEY') },
     coffre: { llmCle: estDefini('LLM_API_KEY'), supabase: estDefini('SUPABASE_DB_URL') },
   });
 });
@@ -76,6 +78,7 @@ app.get('/diagnostic', async (req, res) => {
     manquantes,
     cerveau: testCerveau,
     supabaseConfiguree: sbConfigured(),
+    studio: { replicate: estDefini('REPLICATE_API_KEY'), elevenlabs: estDefini('ELEVENLABS_API_KEY') },
   });
 });
 
@@ -97,6 +100,20 @@ app.post('/conversation', verifierSignature, async (req, res) => {
     const messages = construireMessages({ historique, profil, nouvelleQuestion: question });
     const reponse = await traiterTour({ messages });
     res.json({ sessionId: sessionId || null, contenu: reponse.contenu, usage: reponse.usage });
+  } catch (e) {
+    res.status(500).json({ erreur: String(e.message || e) });
+  }
+});
+
+// Endpoint Studio visuel & voix — l'outil P1 de Nexus.
+// Le front envoie { operation, prompt, image_url, background_url, voice_id, user_id, session_id }.
+// Le cœur réserve le péage, exécute l'API (Replicate/ElevenLabs), confirme, et rend l'URL.
+app.post('/studio', verifierSignature, async (req, res) => {
+  try {
+    const d = req.body || {};
+    if (!d.user_id) return res.status(400).json({ erreur: 'user_id requis.' });
+    const resultat = await executerStudio(d);
+    res.json(resultat);
   } catch (e) {
     res.status(500).json({ erreur: String(e.message || e) });
   }
