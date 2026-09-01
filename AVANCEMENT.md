@@ -56,16 +56,43 @@
 
 ---
 
+## 🗺️ PLAN — Rendre NEXUS identique au Gardien (validé par ElHadj, 01/09/2026)
+
+**Objectif** : transposer toutes les capacités du Gardien (atelier, bac à sable, agent complet,
+mémoire, créations avancées, web, pont, sentinelle, journal) dans Nexus, **molo molo**, chacune testée.
+
+### Les 7 vagues
+| # | Vague | Contenu | Livrable de fin |
+|---|---|---|---|
+| 1 | **Atelier + bac à sable** | atelier.js, atelier-lecture.js, chargement serveur | créer un outil maison, l'éprouver, il répond |
+| 2 | Agent complet + mémoire | boucle agentique, historique, consignes, RAG | agent qui raisonne et se souvient |
+| 3 | Créations avancées | mise-en-page (4 habillages), presentation, studio | docs/pres/dessins alignés Gardien |
+| 4 | Navigation web | voir_page, web_search/fetch | voir et chercher sur Internet |
+| 5 | Pont PC | pont.js, postes.js | accès dossiers ElHadj (si voulu) |
+| 6 | Sentinelle + journal | sentinel, secours, dossiers, zip | veille, redémarrage auto, journalisation |
+| 7 | Interface config | pages admin complètes | réglages dans l'interface |
+
+### Décisions en attente (avant/au début de vague 1)
+1. Nexus devient-il **UN agent complet** (tout) ou garde-t-il **2 rôles** (Gardien=infra, Nexus=copilote entreprise) ?
+   → détermine l'ampleur des vagues 4 à 6.
+2. **Bac à sable isolé** : tester code sans accès prod (principe retenu).
+3. **Outils de l'atelier** : partagés Gardien+Nexus, ou séparés ? (défaut : séparés `/app/data/outils`).
+
+> Détail + leçons dans les fiches mémoire `memo-nexus-plan-identique-gardien` et `memo-nexus-suivi-vague1`.
+
+---
+
 ## ⏳ À faire ensuite (P2+)
 
-1. **Identification / connexion** sur Nexus (comptes Supabase) — demandé par ElHadj.
-2. **Paramètres complets** (tous les onglets) + pages « Connexion » et « Configuration ».
-3. **Sécuriser la clé API** : ne pas renvoyer `apiKey` COMPLÈTE au front dans /cerveau
+1. **Vague 1 = Atelier + bac à sable** (prochaine étape après le plan).
+2. **Identification / connexion** sur Nexus (comptes Supabase) — demandé par ElHadj.
+3. **Paramètres complets** (tous les onglets) + pages « Connexion » et « Configuration ».
+4. **Sécuriser la clé API** : ne pas renvoyer `apiKey` COMPLÈTE au front dans /cerveau
    (ne renvoyer que `cleRenseignee` / `apercuCle`).
-4. **Édition HD et décor** : code prêt, à éprouver en réel.
-5. **Brancher le front Copilote** (copilote/index.html) sur Nexus.
-6. **Vidéo IA** : clips, montage, voix off.
-7. **Persistance des sessions** côté Supabase.
+5. **Édition HD et décor** : code prêt, à éprouver en réel.
+6. **Brancher le front Copilote** (copilote/index.html) sur Nexus.
+7. **Vidéo IA** : clips, montage, voix off.
+8. **Persistance des sessions** côté Supabase.
 
 ---
 
@@ -114,8 +141,9 @@ volume `emdc-agent-natif-data:/app/data`, réseau `emdc`.
    (une route non refermée casse la route suivante).
 
 ### Fiches mémoire associées (chercher_connaissance)
-`memo-nexus-guide-passation` (compilation), `memo-methode-deploiement-terminal-elhadj`,
-`memo-retro-deploiement-nexus-difficultes`, `memo-nexus-etat-bascule-moteur`,
+`memo-nexus-guide-passation` (compilation), `memo-nexus-plan-identique-gardien`,
+`memo-nexus-suivi-vague1`, `memo-nexus-etat-bascule-moteur`, `memo-nexus-parametres-bascule-cerveaux`,
+`memo-methode-deploiement-terminal-elhadj`, `memo-retro-deploiement-nexus-difficultes`,
 `memo-avancee-emdc-nexus-global`, `memo-migration-front-copilote-vers-nexus`.
 
 ---
