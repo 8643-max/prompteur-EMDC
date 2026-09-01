@@ -111,7 +111,7 @@ async function tester() {
   } catch (e) {
     etat.textContent = '❌ injoignable — ' + e.message;
     etat.className = 'etat nok';
-    $('detail').innerHTML = 'Le cœur natif ne répond pas à cette adresse. S'il n'est pas encore déployé, lancez-le en local (node src/server.js) ou déployez le conteneur.';
+    $('detail').innerHTML = "Le cœur natif ne répond pas à cette adresse. S'il n'est pas encore déployé, lancez-le en local (node src/server.js) ou déployez le conteneur.";
   }
 }
 
@@ -150,7 +150,7 @@ async function envoyer() {
 
 $('btn-sante').onclick = tester;
 $('btn-effacer').onclick = () => { chat.innerHTML = ''; $('detail').innerHTML = ''; };
-ajouter('sys', 'Bienvenue sur la page d\'essai de l\'étape P0. Renseignez l\'adresse du cœur natif puis cliquez « Tester la connexion ». Si le cœur n\'est pas encore déployé, lancez-le en local sur le VPS et testez.');
+ajouter('sys', "Bienvenue sur la page d'essai de l'étape P0. Renseignez l'adresse du cœur natif puis cliquez « Tester la connexion ». Si le cœur n'est pas encore déployé, lancez-le en local sur le VPS et testez.");
 </script>
 </body>
 </html>
