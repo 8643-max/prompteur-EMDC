@@ -1,8 +1,8 @@
 // Interface d'essai d'EMDC Nexus — servie par le serveur lui-même (GET /).
 // Elle appelle les endpoints du cœur en même origine : conversation, studio
 // (image/voix), document. Accessible à nexus.emdcconsulting.com.
-// NOTE : page générée dans un template literal — ne JAMAIS mettre d'apostrophe
-// non échappée dans les chaînes JS simples (d\' = d' à la sortie).
+// NOTE : page générée dans un template literal — les antislashs doivent être
+// DOUBLÉS (\\\\n → \\n) pour que le navigateur reçoive le bon code.
 
 export const PAGE_INTERFACE = `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -135,7 +135,7 @@ async function genererVoix(){
 }
 async function genererDocument(){
   const titre=$('docTitre').value.trim();if(!titre)return;
-  const lignes=$('docContenu').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const lignes=$('docContenu').value.split('\\n').map(s=>s.trim()).filter(Boolean);
   const blocs=lignes.map(t=>({type:'texte',texte:t}));
   const spec={titre,sous_titre:$('docSous').value.trim(),habillage:$('docHab').value,pied:'EMDC Consulting — Généré par EMDC Nexus',blocs};
   $('btnDoc').disabled=true;
