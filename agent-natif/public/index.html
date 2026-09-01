@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Console d'essai — Cœur natif EMDC Copilote</title>
+<style>
+  :root{
+    --encre:#0f172a; --doux:#64748b; --accent:#2563eb; --accent2:#0ea5e9;
+    --fond:#f8fafc; --carte:#fff; --trait:#e2e8f0; --ok:#16a34a; --ko:#dc2626; --attente:#d97706;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       background:var(--fond);color:var(--encre);line-height:1.5}
+  header{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;padding:22px 20px}
+  header h1{margin:0;font-size:19px;letter-spacing:-.2px}
+  header p{margin:4px 0 0;opacity:.9;font-size:13px}
+  .wrap{max-width:920px;margin:0 auto;padding:20px}
+  .carte{background:var(--carte);border:1px solid var(--trait);border-radius:12px;padding:16px;margin-bottom:16px}
+  .carte h2{margin:0 0 12px;font-size:14px;text-transform:uppercase;letter-spacing:.6px;color:var(--doux)}
+  .ligne{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  input,textarea,select{font:inherit;padding:10px 12px;border:1px solid var(--trait);
+       border-radius:8px;background:#fff;color:var(--encre);width:100%}
+  textarea{min-height:92px;resize:vertical}
+  button{font:inherit;font-weight:600;padding:10px 16px;border:0;border-radius:8px;
+       background:var(--accent);color:#fff;cursor:pointer;white-space:nowrap}
+  button:hover{filter:brightness(1.08)}
+  button.sobre{background:#eef2f7;color:var(--encre)}
+  button.danger{background:var(--ko)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .pastille{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;
+       padding:4px 10px;border-radius:999px;background:#eef2f7}
+  .pastille.ok{background:#dcfce7;color:#166534}
+  .pastille.ko{background:#fee2e2;color:#991b1b}
+  .pastille.attente{background:#fef3c7;color:#92400e}
+  pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto;
+       font-size:12.5px;margin:0;max-height:280px}
+  .etape{padding:7px 12px;border-left:3px solid var(--accent);background:#f1f5f9;
+       margin-bottom:6px;border-radius:0 6px 6px 0;font-size:14px}
+  .reponse{white-space:pre-wrap;background:#f8fafc;border:1px solid var(--trait);
+       border-radius:8px;padding:14px;font-size:15px;min-height:60px}
+  .pied{color:var(--doux);font-size:12.5px;text-align:center;padding:10px 0 28px}
+  label{font-size:13px;font-weight:600;color:var(--doux);display:block;margin-bottom:5px}
+  .col{flex:1;min-width:180px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Console d'essai — Cœur natif EMDC Copilote</h1>
+  <p>Éprouve le moteur natif avec le contrat exact de l'application (chat-async + sondage du statut).</p>
+</header>
+
+<div class="wrap">
+
+  <div class="carte">
+    <h2>1. Serveur et santé</h2>
+    <div class="ligne">
+      <div class="col">
+        <label for="base">Adresse du cœur</label>
+        <input id="base" value="" placeholder="laisser vide = même serveur">
+      </div>
+      <div style="align-self:flex-end;display:flex;gap:8px">
+        <button onclick="verifSante()">Tester la santé</button>
+        <button class="sobre" onclick="verifDiag()">Diagnostic complet</button>
+      </div>
+    </div>
+    <div class="ligne" style="margin-top:12px">
+      <span id="etatSante" class="pastille">non testé</span>
+      <span id="etatCerveau" class="pastille">cerveau : ?</span>
+      <span id="etatSupa" class="pastille">supabase : ?</span>
+    </div>
+    <pre id="sortieSante" style="margin-top:12px;display:none"></pre>
+  </div>
+
+  <div class="carte">
+    <h2>2. Envoyer une demande</h2>
+    <label for="msg">Votre message</label>
+    <textarea id="msg">Bonjour ! Peux-tu te présenter en deux phrases ?</textarea>
+    <div class="ligne" style="margin-top:10px">
+      <div class="col">
+        <label for="uid">user_id</label>
+        <input id="uid" value="essai-console">
+      </div>
+      <div class="col">
+        <label for="lang">Langue</label>
+        <input id="lang" value="fr">
+      </div>
+      <div class="col">
+        <label for="moteur">Point d'entrée</label>
+        <select id="moteur">
+          <option value="/webhook/saas/chat-async">chat-async</option>
+          <option value="/webhook/saas/chat-queue">chat-queue</option>
+        </select>
+      </div>
+    </div>
+    <div class="ligne" style="margin-top:12px">
+      <button id="btnEnvoi" onclick="envoyer()">Envoyer</button>
+      <button id="btnStop" class="danger" onclick="arreter()" disabled>Arrêter</button>
+      <span id="etatTache" class="pastille">au repos</span>
+      <span id="chrono" style="color:var(--doux);font-size:13px"></span>
+    </div>
+  </div>
+
+  <div class="carte">
+    <h2>3. Avancement en direct</h2>
+    <div id="etapes"><em style="color:var(--doux);font-size:14px">Les étapes s'afficheront ici.</em></div>
+  </div>
+
+  <div class="carte">
+    <h2>4. Réponse</h2>
+    <div id="reponse" class="reponse"><em style="color:var(--doux)">En attente…</em></div>
+  </div>
+
+  <div class="carte">
+    <h2>5. Échanges bruts</h2>
+    <pre id="journal">—</pre>
+  </div>
+
+  <p class="pied">EMDC Consulting — console interne d'essai du cœur natif (étape P0).</p>
+</div>
+
+<script>
+let jobEnCours = null, sondage = null, debut = 0, chronoT = null;
+
+const $ = (id) => document.getElementById(id);
+const base = () => ($('base').value || '').replace(/\/+$/, '');
+
+function log(titre, donnee) {
+  const t = new Date().toLocaleTimeString('fr-FR');
+  const bloc = '[' + t + '] ' + titre + '\n' + JSON.stringify(donnee, null, 2) + '\n\n';
+  $('journal').textContent = bloc + $('journal').textContent.replace(/^—$/, '');
+}
+
+function pastille(el, texte, etat) {
+  el.textContent = texte;
+  el.className = 'pastille' + (etat ? ' ' + etat : '');
+}
+
+async function verifSante() {
+  try {
+    const r = await fetch(base() + '/sante');
+    const d = await r.json();
+    log('GET /sante', d);
+    $('sortieSante').style.display = 'block';
+    $('sortieSante').textContent = JSON.stringify(d, null, 2);
+    pastille($('etatSante'), d.ok ? 'serveur en ligne' : 'anomalie', d.ok ? 'ok' : 'ko');
+    pastille($('etatCerveau'), 'cerveau : ' + (d.cerveau || '?') + (d.coffre && d.coffre.llmCle ? ' ✓ clé' : ' — sans clé'),
+             d.coffre && d.coffre.llmCle ? 'ok' : 'attente');
+    pastille($('etatSupa'), 'supabase : ' + (d.supabase ? 'connecté' : 'non configuré'), d.supabase ? 'ok' : 'attente');
+  } catch (e) {
+    pastille($('etatSante'), 'injoignable', 'ko');
+    log('ERREUR /sante', String(e));
+  }
+}
+
+async function verifDiag() {
+  try {
+    const r = await fetch(base() + '/diagnostic');
+    const d = await r.json();
+    log('GET /diagnostic', d);
+    $('sortieSante').style.display = 'block';
+    $('sortieSante').textContent = JSON.stringify(d, null, 2);
+    const c = d.cerveau || {};
+    pastille($('etatCerveau'), 'cerveau : ' + (c.fournisseur || '?') + (c.ok ? ' ✓ répond' : ' ✗ ' + (c.erreur || '')),
+             c.ok ? 'ok' : 'ko');
+  } catch (e) {
+    log('ERREUR /diagnostic', String(e));
+  }
+}
+
+function majChrono() {
+  const s = ((Date.now() - debut) / 1000).toFixed(1);
+  $('chrono').textContent = s + ' s';
+}
+
+async function envoyer() {
+  const message = $('msg').value.trim();
+  if (!message) return;
+
+  $('etapes').innerHTML = '';
+  $('reponse').innerHTML = '<em style="color:var(--doux)">Travail en cours…</em>';
+  $('btnEnvoi').disabled = true;
+  $('btnStop').disabled = false;
+  pastille($('etatTache'), 'en cours', 'attente');
+  debut = Date.now();
+  clearInterval(chronoT); chronoT = setInterval(majChrono, 100);
+
+  const corps = {
+    action: 'chat',
+    message: message,
+    user: 'Console',
+    email: '',
+    user_id: $('uid').value || 'essai-console',
+    session_id: 'console-' + Date.now().toString(36),
+    history: [],
+    lang: $('lang').value || 'fr',
+    mode: 'standard',
+    tool: null
+  };
+
+  try {
+    const r = await fetch(base() + $('moteur').value, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corps)
+    });
+    const d = await r.json();
+    log('POST ' + $('moteur').value, d);
+    if (!d.job_id) throw new Error(d.erreur || 'aucun job_id renvoyé');
+    jobEnCours = d.job_id;
+    sonder();
+  } catch (e) {
+    fini('erreur', 'Envoi impossible : ' + e.message);
+  }
+}
+
+// Sondage toutes les 2 secondes — exactement comme le fait l'application.
+function sonder() {
+  let vues = 0;
+  clearInterval(sondage);
+  sondage = setInterval(async () => {
+    if (!jobEnCours) return;
+    try {
+      const r = await fetch(base() + '/webhook/saas/async/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: jobEnCours, user_id: $('uid').value || 'essai-console' })
+      });
+      const j = await r.json();
+
+      if (Array.isArray(j.etapes) && j.etapes.length > vues) {
+        for (let i = vues; i < j.etapes.length; i++) {
+          const e = j.etapes[i];
+          const div = document.createElement('div');
+          div.className = 'etape';
+          div.textContent = (typeof e === 'string') ? e : (e.titre || JSON.stringify(e));
+          $('etapes').appendChild(div);
+        }
+        vues = j.etapes.length;
+      }
+
+      if (j.statut === 'termine' || j.statut === 'attente_validation') {
+        log('statut final', j);
+        fini('termine', j.resultat || '(réponse vide)');
+      } else if (j.statut === 'erreur') {
+        log('statut erreur', j);
+        fini('erreur', j.erreur || 'erreur inconnue');
+      } else if (j.statut === 'annule') {
+        fini('annule', 'Tâche interrompue.');
+      }
+    } catch (e) {
+      // réseau instable : on retente au tour suivant, comme l'application
+    }
+  }, 2000);
+}
+
+async function arreter() {
+  if (!jobEnCours) return;
+  try {
+    await fetch(base() + '/webhook/saas/async/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: jobEnCours, user_id: $('uid').value, action: 'cancel' })
+    });
+  } catch (e) { /* sans importance */ }
+  fini('annule', 'Tâche interrompue à votre demande.');
+}
+
+function fini(statut, texte) {
+  clearInterval(sondage); sondage = null;
+  clearInterval(chronoT); majChrono();
+  jobEnCours = null;
+  $('btnEnvoi').disabled = false;
+  $('btnStop').disabled = true;
+  const etats = { termine: 'ok', erreur: 'ko', annule: 'attente' };
+  pastille($('etatTache'), statut, etats[statut] || '');
+  $('reponse').textContent = texte;
+}
+
+verifSante();
+</script>
+</body>
+</html>
