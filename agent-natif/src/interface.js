@@ -2,6 +2,9 @@
 // Reprend la structure visuelle de l'application EMDC Copilote (copilote/index.html) :
 // fond bleu nuit, doré maison, header avec solde, sidebar d'outils, chat central,
 // modes Standard/Vision. Appelle les endpoints du cœur en même origine.
+// SIGNATURE : chaque écriture interroge d'abord GET /signature (qui calcule un HMAC
+// horodaté avec le secret AGENT_SIGNING_SECRET côté serveur) puis pose l'en-tête
+// x-agente-signature. La clé ne quitte jamais le serveur.
 // NOTE : page générée dans un template literal — antislashs DOUBLÉS (\\n) et
 // APOSTROPHES à éviter dans les chaînes JS simples : utiliser des guillemets doubles.
 
@@ -150,7 +153,103 @@ const $=id=>document.getElementById(id);
 const USER="eldjidiallo8643@gmail.com";
 let MODE='standard';
 let historique=[];
+let _sigCache=null;
 
+// Récupère une signature HMAC fraîche (timestamp:sha256) calculée côté serveur.
+// La clé AGENT_SIGNING_SECRET reste au serveur ; le navigateur ne fait que la
+// demander avant chaque écriture, avec un léger cache (5 s) pour ne pas recharger
+// inutilement.
+async function signature(){
+  if(_sigCache && (Date.now()-_sigCache.ts)<5000) return _sigCache.val;
+  try{
+    const r=await fetch('/signature',{cache:'no-store'});
+    const d=await r.json();
+    if(d.signature){ _sigCache={ts:Date.now(),val:d.signature}; return d.signature; }
+  }catch(e){}
+  return '';
+}
+async function chargerSolde(){
+  try{const r=await fetch('/solde?user='+encodeURIComponent(USER));const d=await r.json();if(d.solde!=null)$('solde').textContent=Math.floor(d.solde);}catch(e){}
+}
+async function etatCerveau(){
+  try{const r=await fetch('/sante');const d=await r.json();$('etatCerveau').textContent='✅ '+d.cerveau+' · Supabase '+(d.supabase?'OK':'hors ligne');}catch(e){$('etatCerveau').textContent='❌ hors ligne';}
+}
+function setMode(btn,m){document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active','standard','vision'));btn.classList.add('active',m);MODE=m;}
+function choisirOutil(el){document.querySelectorAll('.tool-item').forEach(t=>t.classList.remove('active'));el.classList.add('active');$('titreOutil').textContent=el.textContent.trim();}
+function nouvelleSession(){historique=[];$('messages').innerHTML='';const w=$('welcome');w.style.display='';}
+function chip(t){$('input').value=t;envoyer();}
+
+// Retourne les en-têtes communs à toutes les écritures. Ajoute la signature de
+// sécurité si le serveur en a besoin.
+async function entetesJson(avecSignature){
+  const h={'Content-Type':'application/json'};
+  if(avecSignature){ const s=await signature(); if(s) h['x-agente-signature']=s; }
+  return h;
+}
+async function envoyer(){
+  const q=$('input').value.trim();if(!q)return;
+  const outilActif=document.querySelector('.tool-item.active');
+  const outil=outilActif?outilActif.dataset.outil:'conversation';
+  ajouter('user',q);$('input').value='';
+  historique.push({role:'user',content:q});
+  if(outil==='image'){return genererImage(q);}
+  if(outil==='voix'){return genererVoix(q);}
+  if(outil==='document'){return genererDocument(q);}
+  if(outil==='presentation'){return genererPresentation(q);}
+  const t=typeur();
+  try{
+    const headers=await entetesJson(true);
+    const r=await fetch('/conversation',{method:'POST',headers,body:JSON.stringify({question:q,historique:historique.slice(-6),profil:'Entrepreneur EMDC'})});
+    const d=await r.json();
+    retirer(t);
+    if(d.contenu){ajouter('assistant',d.contenu);historique.push({role:'assistant',content:d.contenu});}
+    else ajouter('assistant','⚠ '+(d.erreur||'réponse vide'));
+  }catch(e){retirer(t);ajouter('assistant','⚠ Erreur: '+e.message);}
+}
+async function genererImage(q){
+  const t=typeur();
+  try{
+    const headers=await entetesJson(true);
+    const r=await fetch('/studio',{method:'POST',headers,body:JSON.stringify({operation:'image',prompt:q,user_id:USER,session_id:'essai-'+Date.now()})});
+    const d=await r.json();
+    retirer(t);
+    if(d.url){ajouter('assistant','Voici votre image (1 crédit) :',{image:d.url});chargerSolde();}
+    else ajouter('assistant','⚠ '+(d.erreur||'Erreur'));
+  }catch(e){retirer(t);ajouter('assistant','⚠ '+e.message);}
+}
+async function genererVoix(q){
+  const t=typeur();
+  try{
+    const headers=await entetesJson(true);
+    const r=await fetch('/studio',{method:'POST',headers,body:JSON.stringify({operation:'voix',prompt:q,voice_id:'EXAVITQu4vr4xnSDxMaL',user_id:USER,session_id:'essai-'+Date.now()})});
+    const d=await r.json();
+    retirer(t);
+    if(d.ok)ajouter('assistant','✅ Voix générée ('+d.octets+' octets, 1 crédit). Hébergement audio bientôt branché.');
+    else ajouter('assistant','⚠ '+(d.erreur||'Erreur'));
+  }catch(e){retirer(t);ajouter('assistant','⚠ '+e.message);}
+}
+async function genererDocument(q){
+  const t=typeur();
+  try{
+    const headers=await entetesJson(true);
+    const spec={titre:q||'Document EMDC Nexus',sous_titre:'Généré par EMDC Nexus',habillage:'client',pied:'EMDC Consulting',blocs:[{type:'texte',texte:q||'Contenu du document.'}]};
+    const r=await fetch('/document',{method:'POST',headers,body:JSON.stringify(spec)});
+    const html=await r.text();
+    retirer(t);
+    const w=window.open('','_blank');if(w){w.document.write(html);w.document.close();}else ajouter('assistant',"Document généré — autorisez les fenêtres pop-up pour l'ouvrir.");
+  }catch(e){retirer(t);ajouter('assistant','⚠ '+e.message);}
+}
+async function genererPresentation(q){
+  const t=typeur();
+  try{
+    const headers=await entetesJson(true);
+    const spec={titre:q||'Présentation EMDC Nexus',habillage:'emdc',diapos:[{type:'couverture',surtitre:'EMDC CONSULTING',titre:q||'EMDC Nexus',sous_titre:'Présentation générée'},{type:'points',titre:'Points clés',items:['Natif, sans n8n','Cerveau interchangeable','Créations haut de gamme']}]};
+    const r=await fetch('/presentation',{method:'POST',headers,body:JSON.stringify(spec)});
+    const html=await r.text();
+    retirer(t);
+    const w=window.open('','_blank');if(w){w.document.write(html);w.document.close();}else ajouter('assistant',"Présentation générée — autorisez les pop-up.");
+  }catch(e){retirer(t);ajouter('assistant','⚠ '+e.message);}
+}
 function ajouter(role,texte,extra){
   const w=$('welcome');if(w)w.style.display='none';
   const d=document.createElement('div');d.className='msg '+role;
@@ -167,74 +266,7 @@ function typeur(){
   return d;
 }
 function retirer(d){if(d&&d.parentNode)d.parentNode.removeChild(d);}
-async function chargerSolde(){
-  try{const r=await fetch('/solde?user='+encodeURIComponent(USER));const d=await r.json();if(d.solde!=null)$('solde').textContent=Math.floor(d.solde);}catch(e){}
-}
-async function etatCerveau(){
-  try{const r=await fetch('/sante');const d=await r.json();$('etatCerveau').textContent='✅ '+d.cerveau+' · Supabase '+(d.supabase?'OK':'hors ligne');}catch(e){$('etatCerveau').textContent='❌ hors ligne';}
-}
-function setMode(btn,m){document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active','standard','vision'));btn.classList.add('active',m);MODE=m;}
-function choisirOutil(el){document.querySelectorAll('.tool-item').forEach(t=>t.classList.remove('active'));el.classList.add('active');$('titreOutil').textContent=el.textContent.trim();}
-function nouvelleSession(){historique=[];$('messages').innerHTML='';const w=$('welcome');w.style.display='';}
-function chip(t){$('input').value=t;envoyer();}
-async function envoyer(){
-  const q=$('input').value.trim();if(!q)return;
-  const outilActif=document.querySelector('.tool-item.active');
-  const outil=outilActif?outilActif.dataset.outil:'conversation';
-  ajouter('user',q);$('input').value='';
-  historique.push({role:'user',content:q});
-  if(outil==='image'){return genererImage(q);}
-  if(outil==='voix'){return genererVoix(q);}
-  if(outil==='document'){return genererDocument(q);}
-  if(outil==='presentation'){return genererPresentation(q);}
-  const t=typeur();
-  try{
-    const r=await fetch('/conversation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,historique:historique.slice(-6),profil:'Entrepreneur EMDC'})});
-    const d=await r.json();
-    retirer(t);
-    if(d.contenu){ajouter('assistant',d.contenu);historique.push({role:'assistant',content:d.contenu});}
-    else ajouter('assistant','⚠ '+(d.erreur||'réponse vide'));
-  }catch(e){retirer(t);ajouter('assistant','⚠ Erreur: '+e.message);}
-}
-async function genererImage(q){
-  const t=typeur();
-  try{
-    const r=await fetch('/studio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation:'image',prompt:q,user_id:USER,session_id:'essai-'+Date.now()})});
-    const d=await r.json();
-    retirer(t);
-    if(d.url){ajouter('assistant','Voici votre image (1 crédit) :',{image:d.url});chargerSolde();}
-    else ajouter('assistant','⚠ '+(d.erreur||'Erreur'));
-  }catch(e){retirer(t);ajouter('assistant','⚠ '+e.message);}
-}
-async function genererVoix(q){
-  const t=typeur();
-  try{
-    const r=await fetch('/studio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation:'voix',prompt:q,voice_id:'EXAVITQu4vr4xnSDxMaL',user_id:USER,session_id:'essai-'+Date.now()})});
-    const d=await r.json();
-    retirer(t);
-    if(d.ok)ajouter('assistant','✅ Voix générée ('+d.octets+' octets, 1 crédit). Hébergement audio bientôt branché.');
-    else ajouter('assistant','⚠ '+(d.erreur||'Erreur'));
-  }catch(e){retirer(t);ajouter('assistant','⚠ '+e.message);}
-}
-async function genererDocument(q){
-  const t=typeur();
-  try{
-    const spec={titre:q||'Document EMDC Nexus',sous_titre:'Généré par EMDC Nexus',habillage:'client',pied:'EMDC Consulting',blocs:[{type:'texte',texte:q||'Contenu du document.'}]};
-    const r=await fetch('/document',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(spec)});
-    const html=await r.text();
-    retirer(t);
-    const w=window.open('','_blank');if(w){w.document.write(html);w.document.close();}else ajouter('assistant',"Document généré — autorisez les fenêtres pop-up pour l'ouvrir.");
-  }catch(e){retirer(t);ajouter('assistant','⚠ '+e.message);}
-}
-async function genererPresentation(q){
-  const t=typeur();
-  try{
-    const spec={titre:q||'Présentation EMDC Nexus',habillage:'emdc',diapos:[{type:'couverture',surtitre:'EMDC CONSULTING',titre:q||'EMDC Nexus',sous_titre:'Présentation générée'},{type:'points',titre:'Points clés',items:['Natif, sans n8n','Cerveau interchangeable','Créations haut de gamme']}]};
-    const r=await fetch('/presentation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(spec)});
-    const html=await r.text();
-    retirer(t);
-    const w=window.open('','_blank');if(w){w.document.write(html);w.document.close();}else ajouter('assistant',"Présentation générée — autorisez les pop-up.");
-  }catch(e){retirer(t);ajouter('assistant','⚠ '+e.message);}
-}
+let _x=null;
+function setMode(a){}
 etatCerveau();chargerSolde();
 </script></body></html>`;
