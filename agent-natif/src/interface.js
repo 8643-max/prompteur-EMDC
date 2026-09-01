@@ -1,6 +1,8 @@
 // Interface d'essai d'EMDC Nexus — servie par le serveur lui-même (GET /).
 // Elle appelle les endpoints du cœur en même origine : conversation, studio
 // (image/voix), document. Accessible à nexus.emdcconsulting.com.
+// NOTE : page générée dans un template literal — ne JAMAIS mettre d'apostrophe
+// non échappée dans les chaînes JS simples (d\' = d' à la sortie).
 
 export const PAGE_INTERFACE = `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -88,7 +90,7 @@ iframe{width:100%;height:60vh;border:1px solid var(--border);border-radius:8px;m
 </main>
 <script>
 const $=id=>document.getElementById(id);
-const USER_DEFAUT='eldjidiallo8643@gmail.com';
+const USER_DEFAUT="eldjidiallo8643@gmail.com";
 async function etatSante(){
   try{
     const r=await fetch('/sante');const d=await r.json();
@@ -145,5 +147,5 @@ async function genererDocument(){
   $('btnDoc').disabled=false;
 }
 etatSante();
-ajouter('ia','Bienvenue sur la console d\'essai EMDC Nexus. Posez une question, générez une image, une voix ou un document — tout tourne en natif, sans n8n.');
+ajouter("ia","Bienvenue sur la console d'essai EMDC Nexus. Posez une question, générez une image, une voix ou un document — tout tourne en natif, sans n8n.");
 </script></body></html>`;
