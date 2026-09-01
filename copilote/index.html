@@ -3523,6 +3523,20 @@ async function sendMessage() {
   }
 
 
+  // — GARDIEN : détection d'une demande de génération/création d'image dans le message.
+  // Comme la génération d'image (Studio FLUX) est réservée au mode Vision Avancée
+  // et coûte 1 crédit, on force proprement le mode Vision dès que l'intention
+  // d'image est explicite, au lieu de laisser le mode Standard (qui échoue).
+  {
+    const msgBas = (text||'').toLowerCase();
+    const intentionImage = /(g[eé]n[eé]re? une image|cr[eé]e? une image|cr[eé]e? un (logo|avatar|illustration)|dessine|imagine|g[eé]n[eé]re? un (logo|avatar|banni[eè]re|affiche)|[pP]hoto de produit|illustration|style photor[ée]aliste)/.test(msgBas);
+    const pasUneQuestion = !/[?]$/.test((text||'').trim());
+    if (intentionImage && pasUneQuestion && S.mode !== 'vision') {
+      setMode('vision');
+      try { showToast('⚡️ Vision Avancée activée — la génération d\'image coûte 1 crédit.', 3500); } catch (e) {}
+    }
+  }
+
   // Standard mode — try n8n webhook first, fallback local
   showTyping();
   const q = text.toLowerCase();
