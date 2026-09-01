@@ -1,0 +1,19 @@
+{
+  "name": "emdc-agent-natif",
+  "version": "0.1.0",
+  "description": "Cœur de l'agent natif EMDC Copilote — remplace progressivement n8n : cerveau interchangeable, coffre à clés, accès Supabase, orchestrateur. Tourne sur le VPS.",
+  "type": "module",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test tests/"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  }
+}
