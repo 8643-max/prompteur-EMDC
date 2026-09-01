@@ -13,6 +13,7 @@ import { secret, estDefini, apercu, enregistrerCles } from './coffre.js';
 import { testerCerveau } from './cerveau.js';
 import { executerStudio } from './studio.js';
 import { rendreDocument, rendrePresentation } from './documents.js';
+import { PAGE_INTERFACE } from './interface.js';
 
 const app = express();
 app.use(express.json({ limit: '4mb' }));
@@ -54,6 +55,9 @@ function verifierSignature(req, res, next) {
   next();
 }
 
+// Console d'essai à la racine
+app.get('/', (req, res) => res.type('html').send(PAGE_INTERFACE));
+
 // ── Page de configuration du coffre (accès admin) ──
 const PAGE_COFFRE = `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -73,7 +77,6 @@ input{width:100%;padding:9px 12px;background:var(--elev);border:1px solid var(--
 .etat.ok{color:var(--ok);border-color:var(--ok)}
 .etat.nok{color:var(--err);border-color:var(--err)}
 .btn{width:100%;padding:11px;background:linear-gradient(135deg,var(--gold),var(--gold-l));color:#0A1128;font-weight:700;border:none;border-radius:9px;cursor:pointer;font-size:14px;margin-top:14px}
-.btn:disabled{opacity:.5}
 .msg{margin-top:12px;font-size:13px;padding:10px;border-radius:8px;display:none}
 .msg.ok{display:block;background:rgba(34,197,94,.12);border:1px solid var(--ok);color:var(--ok)}
 .msg.err{display:block;background:rgba(239,68,68,.12);border:1px solid var(--err);color:var(--err)}
@@ -184,9 +187,6 @@ app.post('/conversation', verifierSignature, async (req, res) => {
     if (!question || !String(question).trim()) {
       return res.status(400).json({ erreur: 'Le champ « question » est requis.' });
     }
-    if (!sbConfigured()) {
-      console.warn('[agent-natif] Supabase non configuré : réponse sans persistance.');
-    }
     const messages = construireMessages({ historique, profil, nouvelleQuestion: question });
     const reponse = await traiterTour({ messages });
     res.json({ sessionId: sessionId || null, contenu: reponse.contenu, usage: reponse.usage });
@@ -206,7 +206,6 @@ app.post('/studio', verifierSignature, async (req, res) => {
   }
 });
 
-// Endpoint document soigné : reçoit la spec JSON, rend le HTML.
 app.post('/document', verifierSignature, (req, res) => {
   try {
     const spec = req.body || {};
@@ -218,7 +217,6 @@ app.post('/document', verifierSignature, (req, res) => {
   }
 });
 
-// Endpoint présentation : reçoit la spec JSON, rend le HTML projetable.
 app.post('/presentation', verifierSignature, (req, res) => {
   try {
     const spec = req.body || {};
