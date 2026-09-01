@@ -2,8 +2,8 @@
 // Reprend la structure visuelle de l'application EMDC Copilote (copilote/index.html) :
 // fond bleu nuit, doré maison, header avec solde, sidebar d'outils, chat central,
 // modes Standard/Vision. Appelle les endpoints du cœur en même origine.
-// NOTE : page générée dans un template literal — antislashs DOUBLÉS (\\n) et
-// apostrophes dans les chaînes JS entre guillemets doubles.
+// NOTE : page générée dans un template literal — les antislashs doivent être
+// DOUBLÉS (\\n, \\t…) pour que le navigateur reçoive le bon code.
 
 export const PAGE_INTERFACE = `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -88,8 +88,6 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 .btn-icon:hover{border-color:var(--gold);color:var(--gold)}
 .btn-icon.primary{background:linear-gradient(135deg,var(--gold-muted),var(--gold));color:var(--on-accent);font-weight:700}
 .btn-icon.primary:hover{opacity:.9}
-#imgResultat{text-align:center;padding:10px 18px}
-#imgResultat img{max-width:100%;max-height:55vh;border-radius:10px;border:1px solid var(--border-strong)}
 @media (max-width:720px){.app-body{grid-template-columns:1fr}.sidebar{display:none}}
 </style></head><body>
 <div id="app">
@@ -134,7 +132,6 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
           </div>
         </div>
       </div>
-      <div id="imgResultat"></div>
       <div class="input-bar">
         <div class="mode-switcher">
           <button class="mode-btn active standard" onclick="setMode(this,'standard')"><span class="mode-dot"></span>Mode Standard <span class="mode-cost">Gratuit</span></button>
@@ -158,7 +155,7 @@ function ajouter(role,texte,extra){
   const w=$('welcome');if(w)w.style.display='none';
   const d=document.createElement('div');d.className='msg '+role;
   const avatar=document.createElement('div');avatar.className='msg-avatar';avatar.textContent=role==='user'?'E':'N';
-  const b=document.createElement('div');b.className='msg-bubble';b.innerHTML=texte.replace(/</g,'&lt;').replace(/\n/g,'<br>');
+  const b=document.createElement('div');b.className='msg-bubble';b.innerHTML=texte.replace(/</g,'&lt;').replace(/\\n/g,'<br>');
   if(extra&&extra.image){const im=document.createElement('img');im.src=extra.image;b.appendChild(im);}
   d.appendChild(avatar);d.appendChild(b);$('messages').appendChild(d);$('messages').scrollTop=$('messages').scrollHeight;
 }
@@ -178,7 +175,7 @@ async function etatCerveau(){
 }
 function setMode(btn,m){document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active','standard','vision'));btn.classList.add('active',m);MODE=m;}
 function choisirOutil(el){document.querySelectorAll('.tool-item').forEach(t=>t.classList.remove('active'));el.classList.add('active');$('titreOutil').textContent=el.textContent.trim();}
-function nouvelleSession(){historique=[];$('messages').innerHTML='';const w=$('welcome');w.style.display='';$('imgResultat').innerHTML='';}
+function nouvelleSession(){historique=[];$('messages').innerHTML='';const w=$('welcome');w.style.display='';}
 function chip(t){$('input').value=t;envoyer();}
 async function envoyer(){
   const q=$('input').value.trim();if(!q)return;
@@ -190,7 +187,6 @@ async function envoyer(){
   if(outil==='voix'){return genererVoix(q);}
   if(outil==='document'){return genererDocument(q);}
   if(outil==='presentation'){return genererPresentation(q);}
-  // conversation
   const t=typeur();
   try{
     const r=await fetch('/conversation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,historique:historique.slice(-6),profil:'Entrepreneur EMDC'})});
