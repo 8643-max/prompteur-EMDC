@@ -2,13 +2,18 @@
 // Migré depuis le workflow n8n « OUTIL · Studio visuel & voix » : mêmes modèles,
 // mêmes coûts, mais exécuté directement par le cœur natif.
 //
-// Quatre opérations, avec péage par crédit (RPC Supabase réserver/confirmer/rembourser) :
+// Quatre opérations, avec péage par crédit (fonctions SQL Supabase) :
 //   • image   — génération FLUX Schnell (Replicate)         — 1 crédit
 //   • edition — détourage/upscale/retouche/rééclairage       — 4 crédits
 //   • decor   — changement de décor                          — 4 crédits
 //   • voix    — ElevenLabs (multilingual v2)                 — 1 crédit
+//
+// Le péage passe par les fonctions SQL reserver_media / confirmer_media /
+// rembourser_media, appelées en direct via le pool Postgres (pas besoin de la
+// service key REST : le conteneur a accès à la base via SUPABASE_DB_URL).
 
 import { secret } from './coffre.js';
+import pg from 'pg';
 
 const REPLICATE = 'https://api.replicate.com';
 const CLE_IMAGE = 'REPLICATE_API_KEY';
@@ -25,6 +30,17 @@ const MODELE_DECOR = '60015df78a8a795470da6494822982140d57b150b9ef14354e79302ff8
 // ── Péage : les coûts (crédits) par opération ──
 export const COUTS = { image: 1, edition: 4, decor: 4, voix: 1 };
 
+let pool = null;
+function getPool() {
+  if (!pool) {
+    const url = secret('SUPABASE_DB_URL');
+    if (!url) throw new Error('Connexion Supabase non configurée.');
+    pool = new pg.Pool({ connectionString: url, ssl: { rejectUnauthorized: false }, max: 3 });
+    pool.on('error', () => {});
+  }
+  return pool;
+}
+
 // ── Détection de l'opération d'édition depuis le texte libre ──
 function detecterEdition(raw) {
   const s = String(raw || 'detourage').toLowerCase();
@@ -34,7 +50,7 @@ function detecterEdition(raw) {
   return 'detourage';
 }
 
-// ── Appel Replicate (lancer une prédiction, avec Prefer: wait si possible) ──
+// ── Appel Replicate (lancer une prédiction) ──
 async function lancerReplicate(body, { attendre = false } = {}) {
   const cle = secret(CLE_IMAGE);
   if (!cle) throw new Error("Clé Replicate non configurée (REPLICATE_API_KEY).");
@@ -52,7 +68,7 @@ async function lancerReplicate(body, { attendre = false } = {}) {
   return d;
 }
 
-// ── Suivi d'une prédiction jusqu'au rendu (avec délai max) ──
+// ── Suivi d'une prédiction jusqu'au rendu ──
 async function attendreRendu(url, maxAttenteMs = 120000) {
   const cle = secret(CLE_IMAGE);
   const debut = Date.now();
@@ -66,23 +82,21 @@ async function attendreRendu(url, maxAttenteMs = 120000) {
   }
 }
 
-// ── Péage : réserver / confirmer / rembourser via RPC Supabase ──
-// NOTE : en natif, on passe par l'API REST Supabase (comme le faisait n8n).
-const SUPABASE_REST = secret('SUPABASE_URL')?.replace(/\/+$/, '') + '/rest/v1';
-async function rpc(nom, corps) {
-  const url = `${SUPABASE_REST}/rpc/${nom}`;
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': secret('SUPABASE_SERVICE_KEY'),
-      'Authorization': `Bearer ${secret('SUPABASE_SERVICE_KEY')}`,
-      'Prefer': 'return=representation',
-    },
-    body: JSON.stringify(corps),
-  });
-  if (!r.ok) throw new Error(`${nom} Supabase ${r.status} : ${(await r.text()).slice(0, 200)}`);
-  return r.json();
+// ── Péage : réserver / confirmer / rembourser (SQL direct via pool) ──
+async function reserver(p_user_id, p_session_id, p_kind, p_cost, p_provider) {
+  const r = await getPool().query(
+    `select reserver_media($1,$2,$3,$4,$5) as r`,
+    [p_user_id, p_session_id, p_kind, p_cost, p_provider]
+  );
+  return r.rows[0]?.r;
+}
+async function confirmer(p_spend_id) {
+  const r = await getPool().query(`select confirmer_media($1) as r`, [p_spend_id]);
+  return r.rows[0]?.r;
+}
+async function rembourser(p_spend_id, p_raison = 'echec') {
+  const r = await getPool().query(`select rembourser_media($1,$2) as r`, [p_spend_id, p_raison]);
+  return r.rows[0]?.r;
 }
 
 /**
@@ -100,34 +114,35 @@ export async function executerStudio(demande) {
   const p_provider = kind === 'voix' ? 'elevenlabs' : 'replicate';
 
   // 1. Réserver le péage
-  const reserve = await rpc('reserver_media', { p_user_id: user_id, p_session_id: session_id, p_kind: kind, p_cost: cout, p_provider });
-  const reserveOk = Array.isArray(reserve) ? reserve[0] : reserve;
-  if (reserveOk && reserveOk.ok === false) {
-    return { ok: false, erreur: reserveOk.message || 'Solde insuffisant.', manque: true };
+  const reserve = await reserver(user_id, session_id, kind, cout, p_provider);
+  const reserveOk = (reserve && reserve.ok !== false) || (reserve && reserve.spend_id);
+  if (!reserveOk) {
+    return { ok: false, erreur: (reserve && reserve.message) || 'Solde insuffisant.', manque: true, detail: reserve };
   }
+  const spendId = reserve.spend_id;
 
   try {
     // 2. Exécuter selon le type
-    if (kind === 'voix') return await faireVoix({ prompt, voice_id, user_id, session_id, cout });
-    if (type === 'edition' || type === 'decor') return await faireEditionDecor({ type, prompt, image_url, background_url, user_id, session_id, cout });
-    return await faireImage({ prompt, user_id, session_id, cout });
+    if (kind === 'voix') return await faireVoix({ prompt, voice_id, spendId });
+    if (type === 'edition' || type === 'decor') return await faireEditionDecor({ type, prompt, image_url, background_url, spendId });
+    return await faireImage({ prompt, spendId });
   } catch (e) {
     // 3. Échec → rembourser
-    await rpc('rembourser_media', { p_user_id: user_id, p_session_id: session_id, p_kind: kind, p_cost: cout }).catch(() => {});
+    await rembourser(spendId).catch(() => {});
     throw e;
   }
 }
 
-async function faireImage({ prompt, user_id, session_id, cout }) {
+async function faireImage({ prompt, spendId }) {
   const d = await lancerReplicate({ input: { prompt } });
   const rendu = await attendreRendu(d.urls?.get, 90000);
   const url = rendu.output?.[0] || rendu.output;
   if (!url) throw new Error('Image générée sans URL.');
-  await rpc('confirmer_media', { p_user_id: user_id, p_session_id: session_id, p_kind: 'image', p_cost: cout, p_provider: 'replicate' });
-  return { ok: true, type: 'image', op: 'generation', url, cout };
+  await confirmer(spendId);
+  return { ok: true, type: 'image', op: 'generation', url, cout: COUTS.image };
 }
 
-async function faireEditionDecor({ type, prompt, image_url, background_url, user_id, session_id, cout }) {
+async function faireEditionDecor({ type, prompt, image_url, background_url, spendId }) {
   let body;
   if (type === 'decor') {
     body = {
@@ -149,11 +164,11 @@ async function faireEditionDecor({ type, prompt, image_url, background_url, user
   const rendu = d.status === 'succeeded' ? d : await attendreRendu(d.urls?.get, 120000);
   const url = rendu.output?.[0] || rendu.output;
   if (!url) throw new Error('Édition sans URL de rendu.');
-  await rpc('confirmer_media', { p_user_id: user_id, p_session_id: session_id, p_kind: 'edition', p_cost: cout, p_provider: 'replicate' });
-  return { ok: true, type, op: type === 'decor' ? 'decor' : detecterEdition(prompt || image_url), url, cout };
+  await confirmer(spendId);
+  return { ok: true, type, op: type === 'decor' ? 'decor' : detecterEdition(prompt || image_url), url, cout: COUTS.edition };
 }
 
-async function faireVoix({ prompt, voice_id, user_id, session_id, cout }) {
+async function faireVoix({ prompt, voice_id, spendId }) {
   const cle = secret('ELEVENLABS_API_KEY');
   if (!cle) throw new Error("Clé ElevenLabs non configurée (ELEVENLABS_API_KEY).");
   if (!voice_id) throw new Error('voice_id requis pour la voix.');
@@ -166,6 +181,6 @@ async function faireVoix({ prompt, voice_id, user_id, session_id, cout }) {
   const buf = Buffer.from(await r.arrayBuffer());
   // Note : la voix générée est renvoyée en binaire — l'hébergement (Supabase Storage)
   // sera branché à la prochaine itération ; ici on rend un objet avec la taille.
-  await rpc('confirmer_media', { p_user_id: user_id, p_session_id: session_id, p_kind: 'voix', p_cost: cout, p_provider: 'elevenlabs' });
-  return { ok: true, type: 'voix', op: 'voix', octets: buf.length, cout };
+  await confirmer(spendId);
+  return { ok: true, type: 'voix', op: 'voix', octets: buf.length, cout: COUTS.voix };
 }
