@@ -58,6 +58,22 @@ function verifierSignature(req, res, next) {
 // Console d'essai à la racine
 app.get('/', (req, res) => res.type('html').send(PAGE_INTERFACE));
 
+// Solde de crédits d'un utilisateur (GET /solde?user=...)
+app.get('/solde', async (req, res) => {
+  try {
+    const user = String(req.query.user || '');
+    if (!user) return res.status(400).json({ erreur: 'user requis.' });
+    if (!sbConfigured()) return res.status(503).json({ erreur: 'Supabase non configuré.' });
+    // Le user peut être un email (token_balances) — on borne et on échappe.
+    const userSafe = user.replace(/'/g, "''");
+    const r = await sbRead(`select balance from token_balances where user_id = '${userSafe}' limit 1`);
+    const solde = r.lignes[0] ? Number(r.lignes[0].balance) : 0;
+    res.json({ user, solde });
+  } catch (e) {
+    res.status(500).json({ erreur: String(e.message || e) });
+  }
+});
+
 // ── Page de configuration du coffre (accès admin) ──
 const PAGE_COFFRE = `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
