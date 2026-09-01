@@ -81,6 +81,8 @@ app.get('/diagnostic', async (req, res) => {
 
 // Endpoint principal : une question de l'utilisateur → réponse du cerveau.
 // Le front envoie { sessionId, historique, profil, question }.
+// En P0, Supabase n'est pas obligatoire : sans base, on répond quand même (pas de
+// persistance) — c'est ce qui permet de tester le cerveau avant le branchement base.
 app.post('/conversation', verifierSignature, async (req, res) => {
   try {
     const { sessionId, historique = [], profil = '', question = '' } = req.body || {};
@@ -88,7 +90,9 @@ app.post('/conversation', verifierSignature, async (req, res) => {
       return res.status(400).json({ erreur: 'Le champ « question » est requis.' });
     }
     if (!sbConfigured()) {
-      return res.status(503).json({ erreur: 'Supabase non configuré sur le cœur.' });
+      // On répond quand même (test du cerveau seul). En prod, ce bloc ne sera
+      // plus atteint une fois la base configurée.
+      console.warn('[agent-natif] Supabase non configuré : réponse sans persistance.');
     }
     const messages = construireMessages({ historique, profil, nouvelleQuestion: question });
     const reponse = await traiterTour({ messages });

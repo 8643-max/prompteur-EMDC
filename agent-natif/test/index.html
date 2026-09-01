@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Essai P0 — Agent natif EMDC Copilote</title>
+<style>
+  :root{
+    --bg:#0A1128;--surface:#0F1A35;--elev:#152040;--border:rgba(212,175,55,.2);
+    --gold:#D4AF37;--gold-l:#F0CF6B;--text:#F0EAD6;--muted:#8FA8CC;--ok:#22C55E;--err:#EF4444;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+  header{padding:14px 18px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  header h1{font-size:16px;color:var(--gold)}
+  header .sub{font-size:11px;color:var(--muted);width:100%}
+  .etat{font-size:11px;padding:3px 10px;border-radius:12px;border:1px solid var(--border)}
+  .etat.ok{color:var(--ok);border-color:var(--ok)}
+  .etat.nok{color:var(--err);border-color:var(--err)}
+  main{flex:1;padding:14px 18px;display:flex;flex-direction:column;gap:12px;max-width:860px;width:100%;margin:0 auto}
+  .config{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;display:grid;gap:8px}
+  .config label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .config input{width:100%;padding:7px 10px;background:var(--elev);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px}
+  .config .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .btn{padding:8px 14px;background:linear-gradient(135deg,var(--gold),var(--gold-l));color:#0A1128;font-weight:700;border:none;border-radius:8px;cursor:pointer;font-size:13px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn.min{background:transparent;border:1px solid var(--border);color:var(--muted);font-weight:500}
+  #chat{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:220px;max-height:52vh}
+  .msg{max-width:80%;padding:8px 12px;border-radius:12px;font-size:13.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+  .msg.user{align-self:flex-end;background:#152A4A;border:1px solid rgba(212,175,55,.22);border-bottom-right-radius:3px}
+  .msg.ia{align-self:flex-start;background:#0C1830;border:1px solid var(--border);border-bottom-left-radius:3px}
+  .msg.sys{align-self:center;background:transparent;color:var(--muted);font-size:11px;border:none}
+  .msg .qui{display:block;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold);margin-bottom:3px}
+  .saisie{display:flex;gap:8px}
+  .saisie input{flex:1;padding:10px 12px;background:var(--elev);border:1px solid var(--border);border-radius:9px;color:var(--text);font-size:14px}
+  .detail{font-size:11px;color:var(--muted);line-height:1.6}
+  .detail pre{background:var(--elev);padding:8px;border-radius:6px;overflow:auto;color:var(--gold-l)}
+  footer{padding:8px 18px;font-size:10.5px;color:var(--muted);text-align:center;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ Essai P0 — Agent natif EMDC Copilote</h1>
+  <span class="etat" id="etat">⏳ non testé</span>
+  <div class="sub">Cette page parle directement au <b>cœur natif</b> (endpoint /conversation), sans n8n. Elle sert à valider l'étape P0 avant de brancher l'interface complète.</div>
+</header>
+<main>
+  <div class="config">
+    <label>Adresse du cœur natif</label>
+    <input id="url" value="http://localhost:3100" placeholder="http://localhost:3100 ou https://agent.emdcconsulting.com">
+    <div class="row">
+      <div><label>Secret de signature (optionnel P0)</label><input id="secret" value="" placeholder="AGENT_SIGNING_SECRET si configuré"></div>
+      <div><label>Profil client (optionnel)</label><input id="profil" value="" placeholder="ex: restaurateur à Dakar"></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" id="btn-sante">Tester la connexion</button>
+      <button class="btn min" id="btn-effacer">Effacer</button>
+    </div>
+  </div>
+  <div id="chat"></div>
+  <div class="saisie">
+    <input id="question" placeholder="Écrivez votre question au cœur natif…" onkeydown="if(event.key==='Enter')envoyer()">
+    <button class="btn" id="btn-envoyer" onclick="envoyer()">Envoyer</button>
+  </div>
+  <div class="detail" id="detail"></div>
+</main>
+<footer>EMDC Consulting — Étape P0 · test du cerveau interchangeable sans n8n</footer>
+
+<script>
+const $ = (s) => document.getElementById(s);
+const chat = $('chat');
+const etat = $('etat');
+
+function ajouter(role, texte) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + role;
+  const qui = role === 'user' ? 'Vous' : (role === 'ia' ? 'EMDC Copilote' : 'Système');
+  d.innerHTML = '<span class="qui">' + qui + '</span>' + texte.replace(/</g, '&lt;');
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function signer(secret, body) {
+  if (!secret) return '';
+  const ts = Math.floor(Date.now() / 1000);
+  const msg = String(ts);
+  const algo = { name: 'HMAC', hash: 'SHA-256' };
+  return crypto.subtle.importKey('raw', new TextEncoder().encode(secret), algo, false, ['sign'])
+    .then((k) => crypto.subtle.sign(algo, k, new TextEncoder().encode(msg)))
+    .then((sig) => {
+      const hex = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
+      return ts + ':' + hex;
+    });
+}
+
+async function tester() {
+  const url = $('url').value.replace(/\/+$/, '');
+  etat.textContent = '⏳ test…';
+  etat.className = 'etat';
+  try {
+    const r = await fetch(url + '/sante');
+    const d = await r.json();
+    if (d.ok) {
+      etat.textContent = '✅ connecté — ' + d.cerveau + ' · Supabase ' + (d.supabase ? 'OK' : 'hors ligne');
+      etat.className = 'etat ok';
+    } else {
+      etat.textContent = '⚠ réponse inattendue';
+      etat.className = 'etat nok';
+    }
+    $('detail').innerHTML = '<b>Réponse /sante :</b><pre>' + JSON.stringify(d, null, 2) + '</pre>';
+  } catch (e) {
+    etat.textContent = '❌ injoignable — ' + e.message;
+    etat.className = 'etat nok';
+    $('detail').innerHTML = 'Le cœur natif ne répond pas à cette adresse. S'il n'est pas encore déployé, lancez-le en local (node src/server.js) ou déployez le conteneur.';
+  }
+}
+
+async function envoyer() {
+  const q = $('question').value.trim();
+  if (!q) return;
+  const url = $('url').value.replace(/\/+$/, '');
+  ajouter('user', q);
+  $('question').value = '';
+  $('btn-envoyer').disabled = true;
+  try {
+    const corps = {
+      question: q,
+      profil: $('profil').value.trim() || '',
+      historique: [],
+    };
+    const entetes = { 'Content-Type': 'application/json' };
+    const sig = await signer($('secret').value.trim(), corps);
+    if (sig) entetes['x-agente-signature'] = sig;
+    const r = await fetch(url + '/conversation', { method: 'POST', headers: entetes, body: JSON.stringify(corps) });
+    const d = await r.json();
+    if (d.contenu) {
+      ajouter('ia', d.contenu);
+      $('detail').innerHTML = '<b>Usage :</b> ' + (d.usage ? JSON.stringify(d.usage) : 'n/c');
+    } else {
+      ajouter('sys', 'Erreur : ' + (d.erreur || 'réponse vide'));
+      $('detail').innerHTML = '<b>Réponse :</b><pre>' + JSON.stringify(d, null, 2) + '</pre>';
+    }
+  } catch (e) {
+    ajouter('sys', 'Impossible de joindre le cœur : ' + e.message);
+  } finally {
+    $('btn-envoyer').disabled = false;
+    $('question').focus();
+  }
+}
+
+$('btn-sante').onclick = tester;
+$('btn-effacer').onclick = () => { chat.innerHTML = ''; $('detail').innerHTML = ''; };
+ajouter('sys', 'Bienvenue sur la page d\'essai de l\'étape P0. Renseignez l\'adresse du cœur natif puis cliquez « Tester la connexion ». Si le cœur n\'est pas encore déployé, lancez-le en local sur le VPS et testez.');
+</script>
+</body>
+</html>
