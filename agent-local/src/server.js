@@ -9,14 +9,57 @@ const https = require('https');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const navigateur = require('./browser');
 
 const CONFIG_PATH = path.join(__dirname, '..', 'agent.config.json');
 const STORAGE_DIR = path.join(__dirname, '..', 'storage');
 const CLOUDFLARED_DIR = path.join(__dirname, '..', 'bin');
+const MONTAGE_DIR = path.join(STORAGE_DIR, 'montages');
+const SCRIPTS_DIR = path.join(__dirname, '..', 'scripts_montage'); // le style du client, gardé chez lui
 const PORT = 8743;
 const MAX_SIGNATURE_AGE_SECONDS = 300; // anti-rejeu
+const DELAI_MONTAGE_MAX_MS = 30 * 60 * 1000; // un montage de plusieurs minutes prend son temps
+
+// ── FFmpeg : jamais un chemin écrit en dur (ça ne marcherait que sur UN PC).
+// Ordre de recherche : 1) agent.config.json (ffmpeg_path), 2) déjà dans le
+// PATH du système, 3) emplacements d'installation les plus courants. ──
+function trouverFfmpeg(cfg) {
+  if (cfg.ffmpeg_path && fs.existsSync(cfg.ffmpeg_path)) return cfg.ffmpeg_path;
+  try {
+    const cmd = process.platform === 'win32' ? 'where' : 'which';
+    const r = execSync(`${cmd} ffmpeg`, { encoding: 'utf8' }).trim().split('\n')[0];
+    if (r && fs.existsSync(r)) return r;
+  } catch (e) { /* pas dans le PATH, on continue */ }
+  const candidats = process.platform === 'win32'
+    ? [path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Packages')]
+    : ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg'];
+  for (const c of candidats) {
+    if (process.platform !== 'win32' && fs.existsSync(c)) return c;
+  }
+  if (process.platform === 'win32' && fs.existsSync(candidats[0])) {
+    // WinGet range les paquets sous un dossier au nom variable (version incluse).
+    try {
+      const dossiers = fs.readdirSync(candidats[0]).filter((d) => /ffmpeg/i.test(d));
+      for (const d of dossiers) {
+        const trouve = trouverRecursif(path.join(candidats[0], d), 'ffmpeg.exe');
+        if (trouve) return trouve;
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+function trouverRecursif(dossier, nomFichier, profondeur = 0) {
+  if (profondeur > 4) return null;
+  let entrees;
+  try { entrees = fs.readdirSync(dossier, { withFileTypes: true }); } catch (e) { return null; }
+  for (const e of entrees) {
+    const p = path.join(dossier, e.name);
+    if (e.isFile() && e.name.toLowerCase() === nomFichier.toLowerCase()) return p;
+    if (e.isDirectory()) { const r = trouverRecursif(p, nomFichier, profondeur + 1); if (r) return r; }
+  }
+  return null;
+}
 
 function loadConfig() {
   if (!fs.existsSync(CONFIG_PATH)) {
@@ -32,15 +75,21 @@ function loadConfig() {
   return cfg;
 }
 
-function safeStoragePath(filename) {
-  // Empêche toute traversée de répertoire (../../etc/passwd etc.)
+function safeStoragePathDossier(dossierBase, filename) {
+  // Empêche toute traversée de répertoire (../../etc/passwd etc.), quel que
+  // soit le dossier de base (storage/ pour les documents, scripts_montage/
+  // pour le style du client).
   const cleaned = path.basename(String(filename || ''));
   if (!cleaned || cleaned === '.' || cleaned === '..') throw new Error('Nom de fichier invalide');
-  const full = path.resolve(STORAGE_DIR, cleaned);
-  if (!full.startsWith(path.resolve(STORAGE_DIR) + path.sep) && full !== path.resolve(STORAGE_DIR)) {
+  const base = path.resolve(dossierBase);
+  const full = path.resolve(base, cleaned);
+  if (!full.startsWith(base + path.sep) && full !== base) {
     throw new Error('Chemin refusé');
   }
   return full;
+}
+function safeStoragePath(filename) {
+  return safeStoragePathDossier(STORAGE_DIR, filename);
 }
 
 function verifySignature(cfg, timestamp, rawBody) {
@@ -236,6 +285,63 @@ async function handleRequest(cfg, req, res) {
       if (fs.existsSync(dest)) vers = corbeille(dest, path.basename(dest));
       console.log(`[OK] Document local mis en corbeille : ${filename}`);
       return sendJson(res, 200, { success: true, filename, corbeille: vers ? path.basename(vers) : null });
+    }
+
+    // ── Montage vidéo local (05/09/2026) ──
+    // Le script est TESTÉ côté cloud EMDC avant d'arriver ici (bac à sable :
+    // syntaxe + garde-fous) -- cet agent ne fait AUCUNE vérification de
+    // sécurité sur le contenu du script lui-même, il fait confiance au cloud
+    // qui l'envoie, exactement comme il fait confiance à la signature de
+    // chaque requête. Le style du client (le script) est gardé ICI, sur son
+    // disque -- jamais renvoyé au cloud tel quel après la première fois.
+    if (url.pathname === '/montage/executer' && req.method === 'POST') {
+      const { script, nom_style, video_entree, args } = JSON.parse(rawBody || '{}');
+      if (!script || !nom_style) {
+        return sendJson(res, 400, { success: false, error: 'script et nom_style sont requis' });
+      }
+      const ffmpegPath = trouverFfmpeg(cfg);
+      if (!ffmpegPath) {
+        return sendJson(res, 503, { success: false, error: "FFmpeg introuvable sur cette machine. Installez-le, puis réessayez." });
+      }
+      fs.mkdirSync(SCRIPTS_DIR, { recursive: true });
+      fs.mkdirSync(MONTAGE_DIR, { recursive: true });
+      // Le style est écrit une fois, réutilisé ensuite -- c'est LUI qui reste
+      // chez le client, jamais la vidéo montée (voir LISEZ-MOI, § Montage).
+      const cheminStyle = safeStoragePathDossier(SCRIPTS_DIR, `${nom_style}.py`);
+      fs.writeFileSync(cheminStyle, script, 'utf8');
+
+      const cheminEntree = video_entree ? safeStoragePath(video_entree) : null;
+      if (video_entree && !fs.existsSync(cheminEntree)) {
+        return sendJson(res, 404, { success: false, error: 'vidéo d\'entrée introuvable dans storage/' });
+      }
+      const nomSortie = `montage-${Date.now()}.mp4`;
+      const cheminSortie = path.join(MONTAGE_DIR, nomSortie);
+
+      const argsJson = JSON.stringify({ ...(args || {}), ffmpeg: ffmpegPath, entree: cheminEntree, sortie: cheminSortie });
+      console.log(`[OK] Montage lancé (style: ${nom_style})...`);
+      const resultat = await new Promise((resolve) => {
+        const p = spawn(process.platform === 'win32' ? 'python' : 'python3', [cheminStyle, argsJson], { cwd: STORAGE_DIR });
+        let sortieLog = '', erreurLog = '';
+        p.stdout.on('data', (d) => { sortieLog += d.toString(); });
+        p.stderr.on('data', (d) => { erreurLog += d.toString(); });
+        const minuteur = setTimeout(() => { p.kill(); resolve({ ok: false, erreur: 'délai dépassé' }); }, DELAI_MONTAGE_MAX_MS);
+        p.on('close', (code) => {
+          clearTimeout(minuteur);
+          resolve(code === 0 && fs.existsSync(cheminSortie)
+            ? { ok: true }
+            : { ok: false, erreur: erreurLog.slice(-800) || 'le script a échoué sans message' });
+        });
+        p.on('error', (e) => { clearTimeout(minuteur); resolve({ ok: false, erreur: 'python introuvable : ' + e.message }); });
+      });
+
+      if (!resultat.ok) {
+        console.error(`[ERREUR] Montage échoué : ${resultat.erreur}`);
+        return sendJson(res, 500, { success: false, error: resultat.erreur });
+      }
+      const taille = fs.statSync(cheminSortie).size;
+      console.log(`[OK] Montage terminé : storage/montages/${nomSortie} (${Math.round(taille / 1024 / 1024)} Mo)`);
+      // La vidéo reste ICI, chez le client -- jamais renvoyée au cloud EMDC.
+      return sendJson(res, 200, { success: true, fichier: `montages/${nomSortie}`, taille_octets: taille });
     }
 
     // Navigateur local (Worker 7, Browser Automation) : pilote le vrai Chrome

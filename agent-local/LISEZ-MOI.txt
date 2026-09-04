@@ -110,3 +110,27 @@ Ces deux dossiers restent CHEZ VOUS. Aucune ancienne version, aucun
 document supprime ne remonte sur internet. C'est la raison pour
 laquelle cette fonction demande de mettre l'agent a jour : garder vos
 versions ailleurs que sur votre PC aurait trahi la promesse de depart.
+
+------------------------------------------------------------
+MONTAGE VIDEO EN LOCAL (nouveau)
+------------------------------------------------------------
+
+Si vous demandez un montage video a l'assistant, le calcul se fait
+directement sur VOTRE ordinateur, avec VOTRE FFmpeg deja installe.
+
+Ce qui se passe chez vous :
+
+ - Le style de montage (le "comment" : sous-titres, effets, cadrage)
+   est garde dans storage\..\scripts_montage\ SUR VOTRE PC. A chaque
+   fois que vous demandez une amelioration a l'assistant, ce style
+   evolue et reste chez vous.
+ - La video montee arrive dans storage\montages\ -- elle ne repart
+   JAMAIS vers le cloud EMDC. C'est a vous de l'utiliser, la deplacer
+   ou la supprimer.
+ - Votre chemin FFmpeg est detecte automatiquement (deja installe,
+   ou trouve dans les emplacements courants). S'il est introuvable,
+   l'assistant vous le dira clairement plutot que d'echouer en silence.
+
+Avant d'arriver chez vous, chaque script de montage est verifie par
+EMDC (syntaxe correcte, aucun acces reseau, aucune commande dangereuse)
+-- votre agent ne fait tourner que ce qui a deja ete controle.
